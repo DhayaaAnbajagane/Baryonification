@@ -8,22 +8,60 @@ from astropy import units as u
 
 from .Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
 
-class Baryonification3D(object):
+class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, R_range = [1e-5, 50], N_samples = 500, epsilon_max = 4):
+    def __init__(self, DMO, DMB, cosmo, R_range = [1e-5, 50], N_samples = 500, epsilon_max = 4):
 
 
         self.DMO = DMO
         self.DMB = DMB
+        self.cosmo       = cosmo #CCL cosmology instance
         self.R_range     = R_range
         self.epsilon_max = epsilon_max
-        self.N_samples = N_samples
+        self.N_samples   = N_samples
 
-    def displacement_func_shell(self, cosmo, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        '''
-        This routine generates a function that is used to do
-        baryonification in a 2D density image
-        '''
+        self.setup_interpolator()
+
+
+    def get_masses(self, model, r, M, a, mass_def):
+
+        raise NotImplementedError("Implement a get_masses() method first")
+
+
+    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30):
+
+        M_range = np.geomspace(M_min, M_max, N_samples_Mass)
+        z_range = np.geomspace(z_min, z_max, N_samples_z)
+        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_sample)
+        dlnr = np.log(r[1]) - np.log(r[0])
+
+        M_DMO_interp = np.zeros([z_range.size, M_range.size, r.size])
+        M_DMB_interp = np.zeros([z_range.size, M_range.size, r.size])
+
+        M_DMB_range_interp = np.geomspace(1e10, 1e16, self.N_sample)
+        log_r_new_interp   = np.zeros([z_range.size, M_range.size, M_DMB_range_interp.size])
+
+        for i in range(M_range.size):
+            for j in range(z_range.size):
+
+                self.get_masses(model)
+
+                #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
+                M_DMO_interp[j, i, :] = get_masses(DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
+                M_DMB_interp[j, i, :] = get_masses(DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
+
+                log_r_new_interp[j, i, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i]), np.log(r))
+
+        input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
+        input_grid_2 = (np.log(1 + z_range), np.log(M_range), np.log(M_DMB_range_interp))
+
+        self.interp_DMO = interpolate.RegularGridInterpolator(input_grid_1, np.log(M_DMO_interp))
+        self.interp_DMB = interpolate.RegularGridInterpolator(input_grid_2, log_r_new_interp, bounds_error = False) #Reverse needed for practical application
+
+        return 0
+
+
+    def displacements(self, x, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr = np.log(r[1]) - np.log(r[0])
@@ -31,86 +69,42 @@ class Baryonification3D(object):
         z = 1/a - 1
 
         M_use = np.atleast_1d(M)
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R     = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+
+        offset = np.zeros_like(x)
+        inside = (x > self.R_range[0]) & (x < self.epsilon_max*R)
+
+        x = x[inside]
+
+        empty = np.ones_like(x)
+        z_in  = np.log(1 + z)*empty
+        M_in  = np.log(M)*empty
+
+        one = self.interp_DMO([z_in, M_in, np.log(x), ])
+        two = self.interp_DMB([z_in, M_in, one, ])
+
+        offset[inside] = np.exp(two) - x
+
+        return offset
 
 
-        rho_DMO = self.DMO.real(cosmo, r, M, a, mass_def = mass_def)
-        rho_DMB = self.DMB.real(cosmo, r, M, a, mass_def = mass_def)
+class Baryonification3D(BaryonificationClass):
 
-        #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-        M_DMO   = np.cumsum(4*np.pi*r**3 * rho_DMO * dlnr) * a
-        M_DMB   = np.cumsum(4*np.pi*r**3 * rho_DMB * dlnr) * a
+    def get_masses(model, r, M, a, mass_def):
 
-        del rho_DMO, rho_DMB
+        dlnr = np.log(r[1]/r[0])
+        rho  = model.real(cosmo, r, M, a, mass_def = mass_def)
+        M    = np.cumsum(4*np.pi*r**3 * rho * dlnr)
 
-        interp_DMO = interpolate.interp1d(np.log(r), np.log(M_DMO))
-        interp_DMB = interpolate.interp1d(np.log(M_DMB), np.log(r), bounds_error = False) #Reverse needed for practical application
-
-        #Func takes radius in DMO sim. Computes enclosed DMO mass.
-        #Finds radius in DMB that has same enclosed mass.
-        #Gets distance offset between the two.
-        def func(x):
-
-            offset = np.zeros_like(x)
-            inside = (x > r[0]) & (x < self.epsilon_max*R)
-
-            x = x[inside]
-
-            one = interp_DMO(np.log(x))
-            two = interp_DMB(one)
-            two = np.where(np.isnan(two), np.log(x), two) #When two is np.NaN, offset is just 0
-
-            offset[inside] = np.exp(two) - x
-
-            return offset
-
-        return func
+        return M
 
 
-class Baryonification2D(Baryonification3D):
+class Baryonification2D(BaryonificationClass):
 
-    def displacement_func_shell(self, cosmo, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        '''
-        This routine generates a function that is used to do
-        baryonification in a 2D density image
-        '''
+    def get_masses(model, r, M, a, mass_def):
 
-        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
-        dlnr = np.log(r[1]) - np.log(r[0])
+        dlnr  = np.log(r[1]/r[0])
+        Sigma = model.projected(cosmo, r, M, a, mass_def = mass_def) * a #scale fac. needed because ccl projection done in comoving, not physical, units
+        M     = np.cumsum(2*np.pi*r**2 * Sigma * dlnr)
 
-        z = 1/a - 1
-
-        M_use = np.atleast_1d(M)
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
-        Sigma_DMO = self.DMO.projected(cosmo, r, M, a, mass_def = mass_def)
-        Sigma_DMB = self.DMO.projected(cosmo, r, M, a, mass_def = mass_def)
-
-        #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-        M_DMO   = np.cumsum(2*np.pi*r**2 * Sigma_DMO * dlnr) * a
-        M_DMB   = np.cumsum(2*np.pi*r**2 * Sigma_DMB * dlnr) * a
-
-        del rho_DMO, rho_DMB
-
-        interp_DMO = interpolate.interp1d(np.log(r), np.log(M_DMO))
-        interp_DMB = interpolate.interp1d(np.log(M_DMB), np.log(r), bounds_error = False) #Reverse needed for practical application
-
-        #Func takes radius in DMO sim. Computes enclosed DMO mass.
-        #Finds radius in DMB that has same enclosed mass.
-        #Gets distance offset between the two.
-        def func(x):
-
-            offset = np.zeros_like(x)
-            inside = (x > r[0]) & (x < self.epsilon_max*R)
-
-            x = x[inside]
-
-            one = interp_DMO(np.log(x))
-            two = interp_DMB(one)
-            two = np.where(np.isnan(two), np.log(x), two) #When two is np.NaN, offset is just 0
-
-            offset[inside] = np.exp(two) - x
-
-            return offset
-
-        return func
+        return M

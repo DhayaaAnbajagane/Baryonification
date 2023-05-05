@@ -16,11 +16,12 @@ MY_FILL_VAL = np.NaN
 
 class Baryonify2D(object):
 
-    def __init__(self, HaloCatalog, LightconeShell):
+    def __init__(self, HaloCatalog, LightconeShell, Baryonification2D = None):
 
         self.HaloCatalog    = HaloCatalog
         self.LightconeShell = LightconeShell
         self.cosmo = HaloCatalog.cosmology()
+        self.Baryonification2D = Baryonification2D
 
     def parse_args(self):
 
@@ -83,25 +84,30 @@ class Baryonify2D(object):
         orig_map = self.LightconeShell.data
         new_map  = orig_map.copy()
 
-        #We interpolate just the 2pt correlation function part
-        #since recomputing that for every halo is SLOW
-        r_temp  = np.geomspace(1e-10, 1e10, 10_000)
-        xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
-        xi_temp = interpolate.interp1d(r_temp, xi_temp)
+        if self.Baryonification2D is None:
+
+            #We interpolate just the 2pt correlation function part
+            #since recomputing that for every halo is SLOW
+            r_temp  = np.geomspace(1e-10, 1e10, 10_000)
+            xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
+            xi_temp = interpolate.interp1d(r_temp, xi_temp)
 
 
-        DMO = DarkMatterOnly(epsilon = self.args['epsilon'],
-                             q = self.args['q'], p = self.args['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+            DMO = DarkMatterOnly(epsilon = self.args['epsilon'],
+                                 q = self.args['q'], p = self.args['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
 
-        DMB = DarkMatterBaryon(epsilon = self.args['epsilon'], a = self.args['a'], n = self.args['n'],
-                               theta_ej = self.args['theta_ej'], theta_co = self.args['theta_co'],
-                               M_c = self.args['M_c'], mu = self.args['mu'],
-                               A = self.args['A'], M1 = self.args['M1'], epsilon_h = self.args['epsilon_h'],
-                               eta_star = self.args['eta_star'], eta_cga = self.args['eta_cga'],
-                               q = self.args['q'], p = self.args['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+            DMB = DarkMatterBaryon(epsilon = self.args['epsilon'], a = self.args['a'], n = self.args['n'],
+                                   theta_ej = self.args['theta_ej'], theta_co = self.args['theta_co'],
+                                   M_c = self.args['M_c'], mu = self.args['mu'],
+                                   A = self.args['A'], M1 = self.args['M1'], epsilon_h = self.args['epsilon_h'],
+                                   eta_star = self.args['eta_star'], eta_cga = self.args['eta_cga'],
+                                   q = self.args['q'], p = self.args['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
 
-        Baryons = Baryonification2D(DMO = DMO, DMB = DMB, R_range = [1e-5, 50], N_samples = 500,
-                                    epsilon_max = self.args['epsilon_max_Offset'])
+            Baryons = Baryonification2D(DMO = DMO, DMB = DMB, R_range = [1e-5, 50], N_samples = 500,
+                                        epsilon_max = self.args['epsilon_max_Offset'])
+        else:
+
+            Baryons = self.Baryonification2D
 
 
         res        = self.args['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
@@ -130,15 +136,16 @@ class Baryonify2D(object):
             x_hat = x_grid/r_grid
             y_hat = y_grid/r_grid
 
-            GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
-
+            GnomProjector     = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
             displacement_func = Baryons.displacement_func_shell(cosmo, M_j, a_j, epsilon_max = self.args['epsilon_max_Offset'])
 
             map_cutout = GnomProjector.projmap(orig_map, #map1,
                                                lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
                                                rot=(ra_j, deca_j))
 
-            map_cutout *= self.args['pixel_scale_factor']**2 #Need this because pixel value doesn't account for pixel size changes
+            #Need this because map value doesn't account for pixel
+            #size changes when reprojecting. It only resamples the map
+            map_cutout *= self.args['pixel_scale_factor']**2
 
             p_ind      = GnomProjector.projmap(healpix_inds,
                                                lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
@@ -165,7 +172,7 @@ class Baryonify2D(object):
             new_map[p_ind] += healpix_map_offsets
 
 
-        Name = 'Baryonified_Density_shell' + ('_%s'%args['Name'] if args['Name'] is not '' else '')
+        Name = 'Baryonified_Density_shell' + ('_%s'%self.args['Name'] if self.args['Name'] is not '' else '')
         path_ = self.args['OutputDir'] + '/' +  Name + '.fits'
         hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(map1)])
         hdu.writeto(path_, overwrite = True)
@@ -177,8 +184,3 @@ class Baryonify2D(object):
         os.system('rm %s'%path_)
 
         return 0
-
-
-if __name__ == '__main__':
-
-    pass
