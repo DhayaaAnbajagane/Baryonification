@@ -16,55 +16,51 @@ MY_FILL_VAL = np.NaN
 
 class Baryonify2D(object):
 
-    def __init__(self, HaloCatalog, LightconeShell, Baryonification2D = None):
+    def __init__(self, HaloCatalog, LightconeShell, config, Baryonification2D = None):
 
         self.HaloCatalog    = HaloCatalog
         self.LightconeShell = LightconeShell
         self.cosmo = HaloCatalog.cosmology()
         self.Baryonification2D = Baryonification2D
 
-    def parse_args(self):
+        self.config = self.set_config(config)
 
-        import argparse
+    def set_config(self, config):
 
-        my_parser = argparse.ArgumentParser()
+        #Dictionary to hold all the params
+        out = {}
 
-        #Metaparams
-        my_parser.add_argument('--OutputDir', action='store', type = str, required = True)
-        my_parser.add_argument('--Name',      action='store', type = str, default = '')
+        out['OutputDir'] = config.get('OutputDir', None)
+        out['Name']      = config.get('Name', '')
 
+        out['epsilon']   = config.get('epsilon',  4.0)  #Truncation radius for DM NFW profile normalized by R200c
+        out['theta_ej']  = config.get('theta_ej', 4.0)  #Radius up to which gas is ejected, normalized by R200c
+        out['theta_co']  = config.get('theta_co', 0.1)  #Radius within which gas is fully collapsed/bound, normalized by R200c
+        out['M_c']       = config.get('M_c',      2e14) #in Msun, normalization of the relation between gas profile slope and mass
+        out['mu']        = config.get('mu',       0.4)  #slope of the relation between gas profile slope and mass
+        out['eta_star']  = config.get('eta_star', 0.3)  #
+        out['eta_cga']   = config.get('eta_star', 0.6)
+        out['A']         = config.get('A',        0.09)
+        out['M1']        = config.get('M1',       3e11) #in Msun
+        out['epsilon_h'] = config.get('epsilon_h', 0.015)
+        out['a']         = config.get('a', 0.3)
+        out['n']         = config.get('n', 2.0)
+        out['p']         = config.get('p', 0.3)
+        out['q']         = config.get('q', 0.707)
 
-        #Schneider Baryonification parameters as described in 1810.08629
-        my_parser.add_argument('--epsilon',   action='store', type = float, default = 4.0)
-        my_parser.add_argument('--theta_ej',  action='store', type = float, default = 4.0)
-        my_parser.add_argument('--theta_co',  action='store', type = float, default = 0.1)
-        my_parser.add_argument('--M_c',       action='store', type = float, default = 2e14) #in Msun
-        my_parser.add_argument('--mu',        action='store', type = float, default = 0.4)
-        my_parser.add_argument('--eta_star',  action='store', type = float, default = 0.3)
-        my_parser.add_argument('--eta_cga',   action='store', type = float, default = 0.6)
-        my_parser.add_argument('--A',         action='store', type = float, default = 0.09)
-        my_parser.add_argument('--M1',        action='store', type = float, default = 3e11) #in Msun
-        my_parser.add_argument('--epsilon_h', action='store', type = float, default = 0.015)
-        my_parser.add_argument('--a',         action='store', type = float, default = 0.3)
-        my_parser.add_argument('--n',         action='store', type = float, default = 2.0)
-        my_parser.add_argument('--p',         action='store', type = float, default = 0.3)
-        my_parser.add_argument('--q',         action='store', type = float, default = 0.707)
+        out['epsilon_max_Cutout'] = config.get('epsilon_max_Cutout', 5)
+        out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 3)
+        out['pixel_scale_factor'] = config.get('pixel_scale_factor', 0.1)
 
-        #HyperParameters
-        my_parser.add_argument('--epsilon_max_Cutout', action='store', type = float, default = 10)
-        my_parser.add_argument('--epsilon_max_Offset', action='store', type = float, default = 5)
-        my_parser.add_argument('--pixel_scale_factor', action='store', type = float, default = 0.5)
-
-        args = vars(my_parser.parse_args())
 
         #Print args for debugging state
-        print('-------INPUT PARAMS----------')
-        for p in args.keys():
-            print('%s : %s'%(p.upper(), args[p]))
+        print('-------UPDATING INPUT PARAMS----------')
+        for p in out.keys():
+            print('%s : %s'%(p.upper(), out[p]))
         print('-----------------------------')
         print('-----------------------------')
 
-        self.args = args
+        return out
 
 
     def baryonify(self):
@@ -93,24 +89,24 @@ class Baryonify2D(object):
             xi_temp = interpolate.interp1d(r_temp, xi_temp)
 
 
-            DMO = DarkMatterOnly(epsilon = self.args['epsilon'],
-                                 q = self.args['q'], p = self.args['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+            DMO = DarkMatterOnly(epsilon = self.config['epsilon'],
+                                 q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
 
-            DMB = DarkMatterBaryon(epsilon = self.args['epsilon'], a = self.args['a'], n = self.args['n'],
-                                   theta_ej = self.args['theta_ej'], theta_co = self.args['theta_co'],
-                                   M_c = self.args['M_c'], mu = self.args['mu'],
-                                   A = self.args['A'], M1 = self.args['M1'], epsilon_h = self.args['epsilon_h'],
-                                   eta_star = self.args['eta_star'], eta_cga = self.args['eta_cga'],
-                                   q = self.args['q'], p = self.args['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+            DMB = DarkMatterBaryon(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
+                                   theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
+                                   M_c = self.config['M_c'], mu = self.config['mu'],
+                                   A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
+                                   eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
+                                   q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
 
             Baryons = Baryonification2D(DMO = DMO, DMB = DMB, R_range = [1e-5, 50], N_samples = 500,
-                                        epsilon_max = self.args['epsilon_max_Offset'])
+                                        epsilon_max = self.config['epsilon_max_Offset'])
         else:
 
             Baryons = self.Baryonification2D
 
 
-        res        = self.args['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
+        res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
         res_arcmin = res * 180/np.pi * 60
 
         for j in tqdm(range(self.cat.size)):
@@ -124,7 +120,7 @@ class Baryonify2D(object):
             ra_j   = self.cat['ra'][j]
             dec_j  = self.cat['ra'][j]
 
-            Nsize  = 2 * self.args['epsilon_max_Cutout'] * R_j*a_j / D_a / res
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j*a_j / D_a / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
 
             x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_a
@@ -137,7 +133,7 @@ class Baryonify2D(object):
             y_hat = y_grid/r_grid
 
             GnomProjector     = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
-            displacement_func = Baryons.displacement_func_shell(cosmo, M_j, a_j, epsilon_max = self.args['epsilon_max_Offset'])
+            displacement_func = Baryons.displacement_func_shell(cosmo, M_j, a_j, epsilon_max = self.config['epsilon_max_Offset'])
 
             map_cutout = GnomProjector.projmap(orig_map, #map1,
                                                lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
@@ -145,7 +141,7 @@ class Baryonify2D(object):
 
             #Need this because map value doesn't account for pixel
             #size changes when reprojecting. It only resamples the map
-            map_cutout *= self.args['pixel_scale_factor']**2
+            map_cutout *= self.config['pixel_scale_factor']**2
 
             p_ind      = GnomProjector.projmap(healpix_inds,
                                                lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
@@ -172,15 +168,17 @@ class Baryonify2D(object):
             new_map[p_ind] += healpix_map_offsets
 
 
-        Name = 'Baryonified_Density_shell' + ('_%s'%self.args['Name'] if self.args['Name'] is not '' else '')
-        path_ = self.args['OutputDir'] + '/' +  Name + '.fits'
-        hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(map1)])
-        hdu.writeto(path_, overwrite = True)
+        if isinstance(self.config['OutputDir'], str):
 
-        if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')
+            Name = 'Baryonified_Density_shell' + ('_%s'%self.config['Name'] if self.config['Name'] is not '' else '')
+            path_ = self.config['OutputDir'] + '/' +  Name + '.fits'
+            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(map1)])
+            hdu.writeto(path_, overwrite = True)
 
-        #Perform fpack. Remove existing fits, and keep only fits.fz
-        os.system('fpack -q 8192 %s'%path_)
-        os.system('rm %s'%path_)
+            if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')
 
-        return 0
+            #Perform fpack. Remove existing fits, and keep only fits.fz
+            os.system('fpack -q 8192 %s'%path_)
+            os.system('rm %s'%path_)
+
+        return new_map
