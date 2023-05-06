@@ -32,13 +32,13 @@ class BaryonificationClass(object):
 
         M_range = np.geomspace(M_min, M_max, N_samples_Mass)
         z_range = np.geomspace(z_min, z_max, N_samples_z)
-        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_sample)
+        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr = np.log(r[1]) - np.log(r[0])
 
         M_DMO_interp = np.zeros([z_range.size, M_range.size, r.size])
         M_DMB_interp = np.zeros([z_range.size, M_range.size, r.size])
 
-        M_DMB_range_interp = np.geomspace(1e10, 1e16, self.N_sample)
+        M_DMB_range_interp = np.geomspace(1e10, 1e16, self.N_samples)
         log_r_new_interp   = np.zeros([z_range.size, M_range.size, M_DMB_range_interp.size])
 
         for i in range(M_range.size):
