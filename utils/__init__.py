@@ -1,1 +1,1 @@
-from Baryonification.utils.io import HaloCatalog, LightconeShell
+from ..utils.io import HaloCatalog, LightconeShell
