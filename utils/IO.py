@@ -4,6 +4,7 @@ import healpy as hp
 import pyccl as ccl
 
 
+
 class HaloCatalog(object):
     '''
     Class that reads in a halo catalog (in a lightcone)
