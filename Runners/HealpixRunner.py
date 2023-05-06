@@ -140,7 +140,7 @@ class Baryonify2D(object):
 
             map_cutout = GnomProjector.projmap(orig_map, #map1,
                                                lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
-                                               rot=(ra_j, deca_j))
+                                               rot=(ra_j, dec_j))
 
             #Need this because map value doesn't account for pixel
             #size changes when reprojecting. It only resamples the map
@@ -148,7 +148,7 @@ class Baryonify2D(object):
 
             p_ind      = GnomProjector.projmap(healpix_inds,
                                                lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
-                                               rot=(ra_j, deca_j)).flatten().astype(int)
+                                               rot=(ra_j, dec_j)).flatten().astype(int)
 
             p_ind, ind, inv_ind = np.unique(p_ind, return_index = True, return_inverse = True)
             interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
