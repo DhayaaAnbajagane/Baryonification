@@ -78,7 +78,7 @@ class Baryonify2D(object):
 
         healpix_inds = np.arange(hp.nside2npix(self.LightconeShell.NSIDE), dtype = int)
 
-        orig_map = self.LightconeShell.data
+        orig_map = self.LightconeShell.map
         new_map  = orig_map.copy()
 
         if self.Baryonification2D is None:
