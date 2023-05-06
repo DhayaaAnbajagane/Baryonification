@@ -65,9 +65,17 @@ class LightconeShell(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, path, cosmo = None):
+    def __init__(self, map = None, path = None, cosmo = None):
 
-        self.map   = hp.read_map(path)
+        if (path is None) & (map is None):
+            raise ValueError("Need to provide either path to map, or provide map values in healpix ring configuration")
+
+        elif isinstance(path, str):
+            self.map = hp.read_map(path)
+
+        elif isinstance(map, np.ndarray):
+            self.map = map
+
         self.NSIDE = hp.npix2nside(self.map.size)
 
         keys = cosmo.keys()
