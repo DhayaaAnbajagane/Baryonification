@@ -110,16 +110,16 @@ class Baryonify2D(object):
         res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
         res_arcmin = res * 180/np.pi * 60
 
-        for j in tqdm(range(self.cat.size)):
+        for j in tqdm(range(self.HaloCatalog.cat.size)):
 
-            R_j = self.cat['R'][j]
-            M_j = self.cat['M'][j]
-            z_j = self.cat['z'][j]
+            R_j = self.HaloCatalog.cat['R'][j]
+            M_j = self.HaloCatalog.cat['M'][j]
+            z_j = self.HaloCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
             D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
 
-            ra_j   = self.cat['ra'][j]
-            dec_j  = self.cat['ra'][j]
+            ra_j   = self.HaloCatalog.cat['ra'][j]
+            dec_j  = self.HaloCatalog.cat['ra'][j]
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j*a_j / D_a / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
