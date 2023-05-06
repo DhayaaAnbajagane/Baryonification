@@ -1,1 +1,1 @@
-from HealpixRunner import Baryonify2D
+from . import HealpixRunner.Baryonify2D as Baryonify2D
