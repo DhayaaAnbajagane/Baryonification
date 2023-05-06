@@ -154,7 +154,7 @@ class Baryonify2D(object):
             interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
             #Compute the displacement needed
-            offset     = Baryons.displacement(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
+            offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
 
             in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
             new_map    = interp_map(in_coords)
