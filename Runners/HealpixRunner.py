@@ -139,7 +139,7 @@ class Baryonify2D(object):
             GnomProjector     = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
 
             map_cutout = GnomProjector.projmap(orig_map, #map1,
-                                               lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
+                                               lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
                                                rot=(ra_j, dec_j))
 
             #Need this because map value doesn't account for pixel
@@ -147,7 +147,7 @@ class Baryonify2D(object):
             map_cutout *= self.config['pixel_scale_factor']**2
 
             p_ind      = GnomProjector.projmap(healpix_inds,
-                                               lambda x, y, z: hp.vec2pix(args['NSIDE'], x, y, z),
+                                               lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
                                                rot=(ra_j, dec_j)).flatten().astype(int)
 
             p_ind, ind, inv_ind = np.unique(p_ind, return_index = True, return_inverse = True)
