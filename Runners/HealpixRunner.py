@@ -17,7 +17,8 @@ MY_FILL_VAL = np.NaN
 
 class Baryonify2D(object):
 
-    def __init__(self, HaloCatalog, LightconeShell, config, Baryonification2D = None):
+    def __init__(self, HaloCatalog, LightconeShell, config, Baryonification2D = None,
+                 mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.HaloCatalog    = HaloCatalog
         self.LightconeShell = LightconeShell
@@ -25,6 +26,8 @@ class Baryonify2D(object):
         self.Baryonification2D = Baryonification2D
 
         self.config = self.set_config(config)
+
+        self.mass_def = ccl.halos.massdef.MassDef(200, 'critical')
 
     def set_config(self, config):
 
