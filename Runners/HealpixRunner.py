@@ -66,7 +66,7 @@ class Baryonify2D(object):
     def baryonify(self):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
-                                  Om0 = self.cosmo['Omega_m'], w0 = self.cosmology['w0'])
+                                  Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
 
 
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
