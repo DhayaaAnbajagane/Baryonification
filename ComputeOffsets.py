@@ -44,11 +44,9 @@ class BaryonificationClass(object):
         for i in range(M_range.size):
             for j in range(z_range.size):
 
-                self.get_masses(model)
-
                 #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                M_DMO_interp[j, i, :] = get_masses(DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
-                M_DMB_interp[j, i, :] = get_masses(DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
+                M_DMO_interp[j, i, :] = self.get_masses(DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
+                M_DMB_interp[j, i, :] = self.get_masses(DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
 
                 log_r_new_interp[j, i, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i]), np.log(r))
 
