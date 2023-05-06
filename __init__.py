@@ -1,4 +1,4 @@
 import Profiles
 import Runners
-import .ComputeOffsets
+import ComputeOffsets
 import utils
