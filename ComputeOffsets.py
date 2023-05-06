@@ -69,7 +69,7 @@ class BaryonificationClass(object):
         z = 1/a - 1
 
         M_use = np.atleast_1d(M)
-        R     = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R     = self.mass_def.get_radius(self.ccl_cosmo, M_use, a)/a #in comoving Mpc
 
         offset = np.zeros_like(x)
         inside = (x > self.R_range[0]) & (x < self.epsilon_max*R)
