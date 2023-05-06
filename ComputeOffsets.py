@@ -10,12 +10,12 @@ from .Profiles.Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, cosmo, R_range = [1e-5, 50], N_samples = 500, epsilon_max = 4):
+    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-5, 50], N_samples = 500, epsilon_max = 4):
 
 
         self.DMO = DMO
         self.DMB = DMB
-        self.cosmo       = cosmo #CCL cosmology instance
+        self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
         self.R_range     = R_range
         self.epsilon_max = epsilon_max
         self.N_samples   = N_samples
@@ -45,8 +45,8 @@ class BaryonificationClass(object):
             for j in range(z_range.size):
 
                 #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                M_DMO_interp[j, i, :] = self.get_masses(DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
-                M_DMB_interp[j, i, :] = self.get_masses(DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
+                M_DMO_interp[j, i, :] = self.get_masses(self.DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
+                M_DMB_interp[j, i, :] = self.get_masses(self.DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = mass_def)
 
                 log_r_new_interp[j, i, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i]), np.log(r))
 
@@ -91,7 +91,7 @@ class Baryonification3D(BaryonificationClass):
     def get_masses(model, r, M, a, mass_def):
 
         dlnr = np.log(r[1]/r[0])
-        rho  = model.real(cosmo, r, M, a, mass_def = mass_def)
+        rho  = model.real(self.ccl_cosmo, r, M, a, mass_def = mass_def)
         M    = np.cumsum(4*np.pi*r**3 * rho * dlnr)
 
         return M
@@ -102,7 +102,7 @@ class Baryonification2D(BaryonificationClass):
     def get_masses(model, r, M, a, mass_def):
 
         dlnr  = np.log(r[1]/r[0])
-        Sigma = model.projected(cosmo, r, M, a, mass_def = mass_def) * a #scale fac. needed because ccl projection done in comoving, not physical, units
+        Sigma = model.projected(self.ccl_cosmo, r, M, a, mass_def = mass_def) * a #scale fac. needed because ccl projection done in comoving, not physical, units
         M     = np.cumsum(2*np.pi*r**2 * Sigma * dlnr)
 
         return M
