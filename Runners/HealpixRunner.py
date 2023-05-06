@@ -6,9 +6,9 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-from .Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
-from .ComputeOffsets import Baryonification3D, Baryonification2D
-from .utils.io import HaloCatalog, LightconeShell
+from Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
+from ComputeOffsets import Baryonification3D, Baryonification2D
+from utils.io import HaloCatalog, LightconeShell
 
 from tqdm import tqdm
 

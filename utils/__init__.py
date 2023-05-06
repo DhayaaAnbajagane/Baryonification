@@ -1,1 +1,1 @@
-from .IO import HaloCatalog, LightconeShell
+from io import HaloCatalog, LightconeShell
