@@ -118,7 +118,7 @@ class Baryonify2D(object):
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
-            R_j = self.mass_def.get_radius(self.ccl_cosmo, M_j, a_j) #in physical Mpc
+            R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
 
             ra_j   = self.HaloCatalog.cat['ra'][j]
