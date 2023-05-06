@@ -1,6 +1,7 @@
 
 import numpy as np
 import pyccl as ccl
+import healpy as hp
 
 from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
