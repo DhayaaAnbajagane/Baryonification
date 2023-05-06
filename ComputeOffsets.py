@@ -90,7 +90,7 @@ class BaryonificationClass(object):
 
 class Baryonification3D(BaryonificationClass):
 
-    def get_masses(model, r, M, a, mass_def):
+    def get_masses(self, model, r, M, a, mass_def):
 
         dlnr = np.log(r[1]/r[0])
         rho  = model.real(self.ccl_cosmo, r, M, a, mass_def = mass_def)
@@ -101,7 +101,7 @@ class Baryonification3D(BaryonificationClass):
 
 class Baryonification2D(BaryonificationClass):
 
-    def get_masses(model, r, M, a, mass_def):
+    def get_masses(self, model, r, M, a, mass_def):
 
         dlnr  = np.log(r[1]/r[0])
         Sigma = model.projected(self.ccl_cosmo, r, M, a, mass_def = mass_def) * a #scale fac. needed because ccl projection done in comoving, not physical, units
