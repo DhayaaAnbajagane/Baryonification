@@ -6,7 +6,7 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-from .Schneider19Profiles import SchneiderProfiles, Gas, DarkMatterBaryon
+from ..Profiles.Schneider19Profiles import SchneiderProfiles, Gas, DarkMatterBaryon
 
 class Pressure(SchneiderProfiles):
 
@@ -22,7 +22,6 @@ class Pressure(SchneiderProfiles):
         z = 1/a - 1
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
 
         #The overdensity constrast related to the mass definition
         Delta    = mass_def.get_Delta(cosmo, a)
@@ -61,10 +60,7 @@ class Pressure(SchneiderProfiles):
 
         print(dP_dr)
         #integrate to get actual pressure, P(r), and use normalizing coefficient from self-similar expectation
-        ind_R = np.argmin(np.abs(r_integral - R[:, None]), axis = 1)
-        prof  = np.cumsum(dP_dr * r_integral * dlnr, axis = -1)
-        print((P_delta - np.take(prof, ind_R, axis = -1)))
-        prof  = prof + (P_delta - np.take(prof, ind_R, axis = -1))
+        prof  = np.cumsum((dP_dr * r_integral)[::-1] * dlnr, axis = -1)[::-1]
         prof  = interpolate.CubicSpline(np.log(r_integral), np.log(prof), axis = 1)
         prof  = np.exp(prof(np.log(r_use)))
 
