@@ -2,10 +2,12 @@
 import numpy as np
 import pyccl as ccl
 import healpy as hp
+import os
 
 from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
+from astropy.io import fits
 
 from ..Profiles.Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
 from ..ComputeOffsets import Baryonification3D, Baryonification2D
@@ -34,7 +36,7 @@ class Baryonify2D(object):
         #Dictionary to hold all the params
         out = {}
 
-        out['OutputDir'] = config.get('OutputDir', None)
+        out['OutPath']   = config.get('OutPath', None)
         out['Name']      = config.get('Name', '')
 
         out['epsilon']   = config.get('epsilon',  4.0)  #Truncation radius for DM NFW profile normalized by R200c
@@ -53,8 +55,8 @@ class Baryonify2D(object):
         out['q']         = config.get('q', 0.707)
 
         out['epsilon_max_Cutout'] = config.get('epsilon_max_Cutout', 5)
-        out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 3)
-        out['pixel_scale_factor'] = config.get('pixel_scale_factor', 0.1)
+        out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 5)
+        out['pixel_scale_factor'] = config.get('pixel_scale_factor', 0.5)
 
 
         #Print args for debugging state
@@ -117,14 +119,14 @@ class Baryonify2D(object):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
-            a_j = 1/(1 + z_j)
+            a_j = 1/(1 + 0.3730702) #1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
 
             ra_j   = self.HaloCatalog.cat['ra'][j]
-            dec_j  = self.HaloCatalog.cat['ra'][j]
+            dec_j  = self.HaloCatalog.cat['dec'][j]
 
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j*a_j / D_a / res
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_a / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
 
             x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_a
@@ -155,12 +157,12 @@ class Baryonify2D(object):
 
             #Compute the displacement needed
             offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
-
+            
             in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
-            new_map    = interp_map(in_coords)
+            modded_map = interp_map(in_coords)
 
-            mask         = np.isfinite(new_map) #Find which part of map cannot be modified due to out-of-bounds errors
-            mass_offsets = np.where(mask, new_map - map_cutout.flatten(), 0) #Set those offsets to 0
+            mask         = np.isfinite(modded_map) #Find which part of map cannot be modified due to out-of-bounds errors
+            mass_offsets = np.where(mask, modded_map - map_cutout.flatten(), 0) #Set those offsets to 0
             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
 
             #Find which healpix pixels each subpixel corresponds to.
@@ -169,13 +171,13 @@ class Baryonify2D(object):
 
             #Add the offsets to the new healpix map
             new_map[p_ind] += healpix_map_offsets
+            
 
 
-        if isinstance(self.config['OutputDir'], str):
+        if isinstance(self.config['OutPath'], str):
 
-            Name = 'Baryonified_Density_shell' + ('_%s'%self.config['Name'] if self.config['Name'] is not '' else '')
-            path_ = self.config['OutputDir'] + '/' +  Name + '.fits'
-            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(map1)])
+            path_ = self.config['OutPath']
+            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(new_map)])
             hdu.writeto(path_, overwrite = True)
 
             if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')

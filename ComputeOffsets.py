@@ -10,7 +10,7 @@ from .Profiles.Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-5, 50], N_samples = 500, epsilon_max = 4,
+    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, epsilon_max = 4,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
 
@@ -40,7 +40,7 @@ class BaryonificationClass(object):
         M_DMO_interp = np.zeros([z_range.size, M_range.size, r.size])
         M_DMB_interp = np.zeros([z_range.size, M_range.size, r.size])
 
-        M_DMB_range_interp = np.geomspace(1e10, 1e16, self.N_samples)
+        M_DMB_range_interp = np.geomspace(1e5, 1e18, self.N_samples)
         log_r_new_interp   = np.zeros([z_range.size, M_range.size, M_DMB_range_interp.size])
 
         for i in range(M_range.size):
@@ -57,6 +57,7 @@ class BaryonificationClass(object):
 
         self.interp_DMO = interpolate.RegularGridInterpolator(input_grid_1, np.log(M_DMO_interp))
         self.interp_DMB = interpolate.RegularGridInterpolator(input_grid_2, log_r_new_interp, bounds_error = False) #Reverse needed for practical application
+        
 
         return 0
 
@@ -80,8 +81,8 @@ class BaryonificationClass(object):
         z_in  = np.log(1 + z)*empty
         M_in  = np.log(M)*empty
 
-        one = self.interp_DMO([z_in, M_in, np.log(x), ])
-        two = self.interp_DMB([z_in, M_in, one, ])
+        one = self.interp_DMO((z_in, M_in, np.log(x), ))
+        two = self.interp_DMB((z_in, M_in, one, ))
 
         offset[inside] = np.exp(two) - x
 
