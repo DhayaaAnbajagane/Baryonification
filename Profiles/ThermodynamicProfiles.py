@@ -246,7 +246,7 @@ class Pressure(SchneiderProfiles, PressureToThermalSZ):
         rho_gas    = Gas_prof._real(cosmo, r_integral, M, a)
         
         dlnr    = np.log(r_integral[1]) - np.log(r_integral[0])
-        M_total = 4 * np.pi * np.cumsum(r_integral**3 * rho_total * dlnr)
+        M_total = 4 * np.pi * np.cumsum(r_integral**3 * rho_total * dlnr, axis = -1)
 
         #Assuming hydrostatic equilibrium to get dP/dr = -G*M(<r)*rho(r)/r^2
         dP_dr = - G * M_total * rho_gas / r_integral**2
@@ -298,6 +298,7 @@ class Pressure(SchneiderProfiles, PressureToThermalSZ):
             nu_M = M_use/ccl.sigmaM(cosmo, M200m, a)
             nu_M = nu_M[:, None]
             nth  = 1 - a * (1 + np.exp(-(x/b)**c)) * (nu_M/4.1)**(d/(1 + (x/e)**f))
+            
         else:
             raise ValueError("Need to use model = None or model = Green20 No other model implemented so far.")
 
