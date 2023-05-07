@@ -22,7 +22,7 @@ c       = 2.99792458e8 / Mpc_to_m
 
 #Thermodynamic/abundance quantities
 Y         = 0.24 #Helium mass ratio
-Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to conver gas temp. to electron temp
+Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 
 
 #Technically P(r -> infty) is zero, but we need finite
@@ -30,9 +30,34 @@ Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to conver gas temp. to electron temp
 #computatational cosntant
 Pressure_at_infinity = 1e-30
 
-#The main class doing the heavy lifting.
-#Inherits properties of the CCL profile class
-class BattagliaPressure(ccl.halos.profiles.HaloProfile):
+
+#Base class to use to give Pressure profile objects
+#the methods to general tSZ profiles
+class PressureToThermalSZ(object):
+    
+    
+    def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        return Pth_to_Pe
+    
+    
+    def thermalSZ(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):        
+         
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+
+        z = 1/a - 1
+
+        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+
+        prof = sigma_T/(m_e*c**2) * a * self.projected(cosmo, r, M, a, mass_def)
+        prof = prof*self.Pgas_to_Pe(cosmo, r, M, a, mass_def)
+        
+        
+        return prof
+
+
+class BattagliaPressure(ccl.halos.profiles.HaloProfile, PressureToThermalSZ):
 
     '''
     Class that implements a Battaglia profile using the
@@ -175,7 +200,7 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         alpha, gamma = 1, -0.3
 
         P_delta, P_0, beta, x_c = P_delta[:, None], P_0[:, None], beta[:, None], x_c[:, None]
-        prof = Pth_to_Pe * P_delta * P_0 * (x/x_c)**gamma * (1 + (x/x_c)**alpha)**-beta
+        prof = P_delta * P_0 * (x/x_c)**gamma * (1 + (x/x_c)**alpha)**-beta
 
         # Battaglia profile has validity limits for redshift, mass, and distance from halo center.
         # Here, we enforce the distance limit at R/R_Delta > X, where X is input by user
@@ -191,8 +216,7 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         return prof
     
 
-class Pressure(SchneiderProfiles):
-    
+class Pressure(SchneiderProfiles, PressureToThermalSZ):
     
     def __init__(self, nonthermal_model = None, **kwargs):
         
