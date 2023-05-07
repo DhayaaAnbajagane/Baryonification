@@ -1,12 +1,13 @@
 
 import numpy as np
 import pyccl as ccl
+from tqdm import tqdm
 
 from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-from .Profiles.Schneider19Profiles import DarkMatterOnly, DarkMatterBaryon
+from ..Profiles.Schneider19 import DarkMatterOnly, DarkMatterBaryon
 
 class BaryonificationClass(object):
 
@@ -21,8 +22,6 @@ class BaryonificationClass(object):
         self.epsilon_max = epsilon_max
         self.N_samples   = N_samples
         self.mass_def    = mass_def
-
-        self.setup_interpolator()
 
 
     def get_masses(self, model, r, M, a, mass_def):
@@ -43,14 +42,18 @@ class BaryonificationClass(object):
         M_DMB_range_interp = np.geomspace(1e5, 1e18, self.N_samples)
         log_r_new_interp   = np.zeros([z_range.size, M_range.size, M_DMB_range_interp.size])
 
-        for i in range(M_range.size):
-            for j in range(z_range.size):
+        with tqdm(total = M_range.size * z_range.size, desc = 'Building Table') as pbar:
+            for i in range(M_range.size):
+                for j in range(z_range.size):
 
-                #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                M_DMO_interp[j, i, :] = self.get_masses(self.DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = self.mass_def)
-                M_DMB_interp[j, i, :] = self.get_masses(self.DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = self.mass_def)
+                    #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
+                    M_DMO_interp[j, i, :] = self.get_masses(self.DMO, r, M_range[i], 1/(1 + z_range[j]), mass_def = self.mass_def)
+                    M_DMB_interp[j, i, :] = self.get_masses(self.DMB, r, M_range[i], 1/(1 + z_range[j]), mass_def = self.mass_def)
 
-                log_r_new_interp[j, i, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i]), np.log(r))
+                    log_r_new_interp[j, i, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i]), np.log(r))
+
+                    pbar.update(1)
+                        
 
         input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
         input_grid_2 = (np.log(1 + z_range), np.log(M_range), np.log(M_DMB_range_interp))
@@ -63,6 +66,10 @@ class BaryonificationClass(object):
 
 
     def displacements(self, x, M, a):
+        
+        if not (hasattr(self, 'interp_DMO') & hasattr(self, 'interp_DMB')):
+            
+            raise NameError("No Table created. Run setup_interpolator() method first")
 
         r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr = np.log(r[1]) - np.log(r[0])
