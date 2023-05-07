@@ -55,7 +55,7 @@ class BaryonificationClass(object):
         input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
         input_grid_2 = (np.log(1 + z_range), np.log(M_range), np.log(M_DMB_range_interp))
 
-        self.interp_DMO = interpolate.RegularGridInterpolator(input_grid_1, np.log(M_DMO_interp))
+        self.interp_DMO = interpolate.RegularGridInterpolator(input_grid_1, np.log(M_DMO_interp), bounds_error = False)
         self.interp_DMB = interpolate.RegularGridInterpolator(input_grid_2, log_r_new_interp, bounds_error = False) #Reverse needed for practical application
         
 
