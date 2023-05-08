@@ -34,16 +34,14 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         interp3D = np.zeros([z_range.size, M_range.size, r.size])
         interp2D = np.zeros([z_range.size, M_range.size, r.size])
         
-        with tqdm(total = M_range.size * z_range.size, desc = 'Building Table') as pbar:
-            for i in range(M_range.size):
-                for j in range(z_range.size):
+        with tqdm(total = z_range.size, desc = 'Building Table') as pbar:
+            for j in range(z_range.size):                
+                a_j = 1/(1 + z_range[j])
 
-                    a_j = 1/(1 + z_range[j])
-                    
-                    #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                    interp3D[j, i, :] = self.model.real(self.ccl_cosmo, r, M_range[i], a_j, mass_def = self.mass_def)
-                    interp2D[j, i, :] = self.model.projected(self.ccl_cosmo, r, M_range[i], a_j, mass_def = self.mass_def) * a_j
-                    pbar.update(1)
+                #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
+                interp3D[j, :, :] = self.model.real(self.ccl_cosmo, r, M_range, a_j, mass_def = self.mass_def)
+                interp2D[j, :, :] = self.model.projected(self.ccl_cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
+                pbar.update(1)
 
         input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
 
@@ -99,3 +97,11 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         prof = np.exp(prof)
         
         return prof
+
+    
+class TabulatedCorrelation3D(object):
+
+    def __init__(self):
+
+
+        raise NotImplementedError("TabulatedCorrelation3D is not yet implemented.")
