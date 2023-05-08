@@ -6,6 +6,8 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
+import matplotlib.pyplot as plt
+
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     def __init__(self,
@@ -121,11 +123,9 @@ class DarkMatter(SchneiderProfiles):
 
         rho_c = M_use/(4*np.pi*r_s**3*(np.log(1 + c) - c/(1 + c)))
 
-        r_s, rho_c = r_s[:, None], rho_c[:, None]
-
+        r_s, rho_c, r_t = r_s[:, None], rho_c[:, None], r_t[:, None]
+        
         prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2
-
-        prof[:, (r_use > 50*R)] = 0
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -158,7 +158,7 @@ class TwoHalo(SchneiderProfiles):
         if self.xi_mm is None:
             xi_mm   = ccl.correlation_3d(cosmo, a, r_use)
         else:
-            xi_mm   = self.xi_mm(r_use)
+            xi_mm   = self.xi_mm((r_use, np.ones_like(r)*a), )
 
         delta_c = 1.686/ccl.growth_factor(cosmo, a)
         nu_M    = delta_c / ccl.sigmaM(cosmo, M_use, a)
@@ -169,9 +169,8 @@ class TwoHalo(SchneiderProfiles):
         bias_M  = bias_M[:, None]
         prof    = (1 + bias_M * xi_mm)*ccl.rho_x(cosmo, a, species = 'matter', is_comoving = True)
 
-        prof[:, (r_use < 1e-3) | (r_use > 50*R)] = 0
-
-#         prof    = np.where(prof < 0, 1e-10, prof) #Just in case user asks for large radii where the correlation will eventually be negative
+        #Need this zeroing out to do projection in fourier space
+        prof[:, (r_use > 50)] = 0
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -188,6 +187,16 @@ class Stars(SchneiderProfiles):
     '''
     Exponential stellar mass profile
     '''
+    
+    def __init__(self, **kwargs):
+        
+        super().__init__(**kwargs)
+        
+        #For some reason, we need to make this extreme in order
+        #to prevent ringing in the profiles. Haven't figured out
+        #why this is the case
+        self.precision_fftlog['padding_lo_fftlog'] = 1e-5
+        self.precision_fftlog['padding_hi_fftlog'] = 1e5
 
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -205,13 +214,12 @@ class Stars(SchneiderProfiles):
         f_cga, R_h = f_cga[:, None], R_h[:, None]
 
         r_integral = np.geomspace(1e-3, 100, 500)
-        rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M, a, mass_def)
-        M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral)
-
+        rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M_use, a, mass_def)
+        M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
+        M_tot = np.atleast_1d(M_tot)[:, None]
+        
         prof = f_cga*M_tot / (4*np.pi**(3/2)*R_h) * 1/r_use**2 * np.exp(-(r_use/2/R_h)**2)
-
-        prof[r_use > 50*R[:, None]] = 0
-
+                
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
             prof = np.squeeze(prof, axis=-1)
@@ -254,20 +262,22 @@ class Gas(SchneiderProfiles):
         v_integral = r_integral/(self.theta_ej*R)[:, None]
 
 
-        prof_integral = 1/(1 + u_integral)**beta/(1 + v_integral**2)**((7 - beta)/2)
+        prof_integral  = 1/(1 + u_integral)**beta/(1 + v_integral**2)**((7 - beta)/2)
 
-        Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = 1)
+        Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = -1)
         Normalization  = Normalization.integrate(np.log(r_integral[0]), np.log(r_integral[-1]))
+        Normalization  = Normalization[:, None]
 
         del u_integral, v_integral, prof_integral
 
         rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M, a, mass_def)
-        M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral)
+        M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
+        M_tot = np.atleast_1d(M_tot)[:, None]
 
         prof  = 1/(1 + u)**beta/(1 + v**2)**((7 - beta)/2)
         prof *= f_gas*M_tot/Normalization
 
-        prof[r_use > 50*R[:, None]] = 0
+#         prof[r_use > 50*R[:, None]] = 0
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -299,9 +309,8 @@ class CollisionlessMatter(SchneiderProfiles):
         f_cga  = f_cga[:, None]
         f_sga  = f_star - f_cga
         f_clm  = 1 - cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m + f_sga
-
-        relaxation_fraction = 1
-
+        
+        
         NFW_DMO    = DarkMatter(epsilon = self.epsilon)
         Stars_prof = Stars(A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, epsilon_h = self.epsilon_h, epsilon = self.epsilon)
         Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon)
@@ -310,49 +319,57 @@ class CollisionlessMatter(SchneiderProfiles):
         rho_cga    = Stars_prof.real(cosmo, r_integral, M, a, mass_def)
         rho_gas    = Gas_prof.real(cosmo, r_integral, M, a, mass_def)
 
+        #The ccl profile class removes the dimension of size 1
+        #we're adding it back in here in order to keep code general
+        if M_use.size == 1:
+            rho_i   = rho_i[None, :]
+            rho_cga = rho_cga[None, :]
+            rho_gas = rho_gas[None, :]
+            
         dlnr  = np.log(r_integral[1]) - np.log(r_integral[0])
-        M_i   = 4 * np.pi * np.cumsum(r_integral**3 * rho_i   * dlnr)
-        M_cga = 4 * np.pi * np.cumsum(r_integral**3 * rho_cga * dlnr)
-        M_gas = 4 * np.pi * np.cumsum(r_integral**3 * rho_gas * dlnr)
+        M_i   = 4 * np.pi * np.cumsum(r_integral**3 * rho_i   * dlnr, axis = -1)
+        M_cga = 4 * np.pi * np.cumsum(r_integral**3 * rho_cga * dlnr, axis = -1)
+        M_gas = 4 * np.pi * np.cumsum(r_integral**3 * rho_gas * dlnr, axis = -1)
+        
+        ln_M_NFW = [interpolate.CubicSpline(np.log(r_integral), np.log(M_i[m_i]), axis = -1) for m_i in range(M_i.shape[0])]
+        ln_M_cga = [interpolate.CubicSpline(np.log(r_integral), np.log(M_cga[m_i]), axis = -1) for m_i in range(M_i.shape[0])]
+        ln_M_gas = [interpolate.CubicSpline(np.log(r_integral), np.log(M_gas[m_i]), axis = -1) for m_i in range(M_i.shape[0])]
 
-        ln_M_NFW = interpolate.CubicSpline(np.log(r_integral), np.log(M_i), axis = 1)
-        ln_M_cga = interpolate.CubicSpline(np.log(r_integral), np.log(M_cga), axis = 1)
-        ln_M_gas = interpolate.CubicSpline(np.log(r_integral), np.log(M_gas), axis = 1)
+        del M_cga, M_gas, rho_i, rho_cga, rho_gas
 
-        del M_i, M_cga, M_gas, rho_i, rho_cga, rho_gas
+        relaxation_fraction = np.ones_like(M_i)
 
-        M_i = np.exp(ln_M_NFW(np.log(r_integral)))
+        for m_i in range(M_i.shape[0]):
+            
+            counter = 0
+            diff = np.inf #Initializing variable at infinity
+            
+            while np.median(np.abs(diff)) > 1e-2:
 
-        diff = np.inf #Initializing variable at infinity
+                r_f  = r_integral*relaxation_fraction[m_i]
+                M_f  = f_clm[m_i]*M_i[m_i] + np.exp(ln_M_cga[m_i](np.log(r_f))) + np.exp(ln_M_gas[m_i](np.log(r_f)))
 
-#         for i in range(10):
+                relaxation_fraction_new = self.a*((M_i[m_i]/M_f)**self.n - 1) + 1
 
-        counter = 0
-        while np.any(np.abs(diff) > 1e-2):
+                diff = relaxation_fraction_new/relaxation_fraction[m_i] - 1
 
-            r_f  = r_integral*relaxation_fraction
-            M_f  = f_clm*M_i + np.exp(ln_M_cga(np.log(r_f))) + np.exp(ln_M_gas(np.log(r_f)))
+                relaxation_fraction[m_i] = relaxation_fraction_new
 
-            relaxation_fraction_new = self.a*((M_i/M_f)**self.n - 1) + 1
+                counter += 1
 
-            diff = relaxation_fraction_new/relaxation_fraction - 1
+                #Though we do a while loop, we break it off after 10 tries
+                #this seems to work well enough
+                if counter >= 10: break
 
-            relaxation_fraction = relaxation_fraction_new
-
-#             print(len(np.where(np.abs(diff.flatten()) > 1e-2)), np.where(np.abs(diff.flatten()) > 1e-2)[0][:10])
-
-            counter += 1
-
-            if counter >= 1: break
-
-        ln_M_clm = np.log(f_clm) + ln_M_NFW(np.log(r_integral/relaxation_fraction))
-        ln_M_clm = interpolate.CubicSpline(np.log(r_integral), ln_M_clm, axis = 1, extrapolate = False)
+        ln_M_clm = np.vstack([np.log(f_clm[m_i]) + 
+                              ln_M_NFW[m_i](np.log(r_integral/relaxation_fraction[m_i])) for m_i in range(M_i.shape[0])])
+        ln_M_clm = interpolate.CubicSpline(np.log(r_integral), ln_M_clm, axis = -1, extrapolate = False)
         log_der  = ln_M_clm.derivative(nu = 1)(np.log(r_use))
         lin_der  = log_der * np.exp(ln_M_clm(np.log(r_use))) / r_use
         prof     = 1/(4*np.pi*r_use**2) * lin_der
         prof = np.where(np.isnan(prof), 0, prof)
 
-        prof[(r_use[None, :] < r_integral[0]) | (r_use > 50*R[:, None]) | (r_use[None, :] > r_integral[-1])] = 0
+#         prof[(r_use[None, :] < r_integral[0]) | (r_use > 50*R[:, None]) | (r_use[None, :] > r_integral[-1])] = 0
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -403,7 +420,8 @@ class DarkMatterBaryon(SchneiderProfiles):
 
 
         #Need DMO for normalization
-        #Makes sure that M_DMO(<infty) = M_DMB(<infty)
+        #Makes sure that M_DMO(<r) = M_DMB(<r) for the limit r --> infinity
+        #This is just for the onehalo term
         r_integral = np.geomspace(1e-3, 100, 500)
 
         rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M, a, mass_def)
@@ -413,9 +431,12 @@ class DarkMatterBaryon(SchneiderProfiles):
                  Stars_prof.real(cosmo, r_integral, M, a, mass_def) +
                  Gas_prof.real(cosmo, r_integral, M, a, mass_def))
 
-        M_tot_dmb = np.trapz(4*np.pi*r_integral**2 * rho, r_integral)
+        M_tot_dmb = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
 
         Factor = M_tot/M_tot_dmb
+        
+        if np.ndim(Factor) == 1:
+            Factor = Factor[:, None]
 
         prof = (Collisionless_prof.real(cosmo, r, M, a, mass_def) * Factor +
                 Stars_prof.real(cosmo, r, M, a, mass_def) * Factor +
