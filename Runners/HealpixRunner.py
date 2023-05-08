@@ -32,7 +32,7 @@ class DefaultRunner(object):
 
         self.config = self.set_config(config)
 
-        self.mass_def = ccl.halos.massdef.MassDef(200, 'critical')
+        self.mass_def = mass_def
 
     def set_config(self, config):
 
@@ -75,7 +75,7 @@ class DefaultRunner(object):
 
 class Baryonify2D(DefaultRunner):
 
-    def process(self):
+    def process(self, verbose = False):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
                                   Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
@@ -123,7 +123,7 @@ class Baryonify2D(DefaultRunner):
 
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
-        for j in tqdm(range(self.HaloCatalog.cat.size)):
+        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Baryonifying matter', disable = verbose):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
@@ -200,7 +200,7 @@ class Baryonify2D(DefaultRunner):
 
 class PaintThermalSZ(DefaultRunner):
 
-    def process(self):
+    def process(self, verbose = False):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
                                   Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
@@ -242,7 +242,7 @@ class PaintThermalSZ(DefaultRunner):
         z_t = np.linspace(0, 10, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
-        for j in tqdm(range(self.HaloCatalog.cat.size)):
+        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Painting SZ', disable = verbose):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
