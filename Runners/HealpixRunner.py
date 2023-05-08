@@ -121,21 +121,23 @@ class Baryonify2D(DefaultRunner):
         res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
         res_arcmin = res * 180/np.pi * 60
 
-        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Going through Halos'):
+        D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
+        
+        for j in tqdm(range(self.HaloCatalog.cat.size)):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
-            D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
+            D_j = D_a(z_j)
 
             ra_j   = self.HaloCatalog.cat['ra'][j]
             dec_j  = self.HaloCatalog.cat['dec'][j]
 
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_a / res
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
 
-            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_a
+            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
 
             x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
 
@@ -237,30 +239,30 @@ class PaintThermalSZ(DefaultRunner):
         res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
         res_arcmin = res * 180/np.pi * 60
 
+        z_t = np.linspace(0, 10, 1000)
+        D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
+        
         for j in tqdm(range(self.HaloCatalog.cat.size)):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
-            D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
+            D_j = D_a(z_j)
             
-            dA = (res * D_a)**2 / (a_j**2) #comoving area
+            dA = (res * D_j)**2 / (a_j**2) #comoving area
 
             ra_j   = self.HaloCatalog.cat['ra'][j]
             dec_j  = self.HaloCatalog.cat['dec'][j]
 
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_a / res
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
 
-            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_a
+            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
 
             x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
 
             r_grid = np.sqrt(x_grid**2 + y_grid**2)
-
-            x_hat = x_grid/r_grid
-            y_hat = y_grid/r_grid
 
             GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
             p_ind         = GnomProjector.projmap(healpix_inds,
@@ -272,10 +274,8 @@ class PaintThermalSZ(DefaultRunner):
             #Compute the integrated SZ effect
             tSZ = Baryons.projected(cosmo, r_grid.flatten()/a_j, M_j, a_j) * dA
             
-#             print(r_grid.flatten()[::10]/a_j, tSZ[::10], Baryons.projected(cosmo, np.array([1e-3, 1e-2, 1e-1, 1]), M_j, a_j))
-            
-            mask         = np.isfinite(tSZ) #Find which part of map cannot be modified due to out-of-bounds errors
-            mass_offsets = np.where(mask, tSZ, 0) #Set those offsets to 0
+#             mask = np.isfinite(tSZ) #Find which part of map cannot be modified due to out-of-bounds errors
+#             tSZ  = np.where(mask, tSZ, 0) #Set those tSZ values to 0
             
             #Find which healpix pixels each subpixel corresponds to.
             #Get total pressure per healpix pixel
