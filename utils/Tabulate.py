@@ -24,10 +24,10 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         super().__init__()
 
 
-    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30):
+    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, z_linear_sampling = False):
 
         M_range = np.geomspace(M_min, M_max, N_samples_Mass)
-        z_range = np.geomspace(z_min, z_max, N_samples_z)
+        z_range = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.linspace(z_min, z_max, N_samples_z)
         r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr = np.log(r[1]) - np.log(r[0])
 
