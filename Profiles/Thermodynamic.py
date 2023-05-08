@@ -31,33 +31,7 @@ Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 Pressure_at_infinity = 1e-30
 
 
-#Base class to use to give Pressure profile objects
-#the methods to general tSZ profiles
-class PressureToThermalSZ(object):
-    
-    
-    def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        
-        return Pth_to_Pe
-    
-    
-    def thermalSZ(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):        
-         
-        r_use = np.atleast_1d(r)
-        M_use = np.atleast_1d(M)
-
-        z = 1/a - 1
-
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
-        prof = sigma_T/(m_e*c**2) * a * self.projected(cosmo, r, M, a, mass_def)
-        prof = prof*self.Pgas_to_Pe(cosmo, r, M, a, mass_def)
-        
-        
-        return prof
-
-
-class BattagliaPressure(ccl.halos.profiles.HaloProfile, PressureToThermalSZ):
+class BattagliaPressure(ccl.halos.profiles.HaloProfile):
 
     '''
     Class that implements a Battaglia profile using the
@@ -216,7 +190,7 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile, PressureToThermalSZ):
         return prof
     
 
-class Pressure(SchneiderProfiles, PressureToThermalSZ):
+class Pressure(SchneiderProfiles):
     
     def __init__(self, nonthermal_model = None, **kwargs):
         
@@ -236,10 +210,14 @@ class Pressure(SchneiderProfiles, PressureToThermalSZ):
 
         r_integral = np.geomspace(1e-3, 30, 100) #Hardcoded ranges
 
+        r_temp  = np.geomspace(1e-3, 1e3, 10_000)
+        xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
+        xi_temp = interpolate.interp1d(r_temp, xi_temp, bounds_error = False, fill_value = 0)
+
         Total_prof = DarkMatterBaryon(epsilon = self.epsilon, a = self.a, n = self.n,
                                       theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
                                       A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, epsilon_h = self.epsilon_h,
-                                      p = self.p, q = self.q)
+                                      p = self.p, q = self.q, xi_mm = xi_temp)
         Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon)
 
         rho_total  = Total_prof._real(cosmo, r_integral, M, a)
@@ -303,3 +281,43 @@ class Pressure(SchneiderProfiles, PressureToThermalSZ):
             raise ValueError("Need to use model = None or model = Green20 No other model implemented so far.")
 
         return nth
+    
+    
+#Base class to generate SZ profiles
+class ThermalSZ(object):
+    
+    
+    def __init__(self, Pressure, epsilon_max = 3):
+        
+        self.Pressure    = Pressure
+        self.epsilon_max = epsilon_max
+        
+        super().__init__()
+    
+    
+    def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        return Pth_to_Pe
+    
+    
+    def projected(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):        
+        
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+
+        z = 1/a - 1
+
+        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+
+        prof = sigma_T/(m_e*c**2) * a * self.Pressure.projected(cosmo, r, M, a, mass_def)
+        prof = prof*self.Pgas_to_Pe(cosmo, r, M, a, mass_def)
+        
+        prof[r_use > R*self.epsilon_max] = 0
+        
+        
+        return prof
+    
+    
+    def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    
+        return np.zeros_like(r)

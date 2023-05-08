@@ -22,13 +22,13 @@ class DefaultRunner(object):
     A class that contains relevant utils for input/output
     '''
     
-    def __init__(self, HaloCatalog, LightconeShell, config, Baryonification2D = None,
+    def __init__(self, HaloCatalog, LightconeShell, config, model = None,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.HaloCatalog    = HaloCatalog
         self.LightconeShell = LightconeShell
         self.cosmo = HaloCatalog.cosmology()
-        self.Baryonification2D = Baryonification2D
+        self.model = model
 
         self.config = self.set_config(config)
 
@@ -71,9 +71,11 @@ class DefaultRunner(object):
 
         return out
     
+    
+
 class Baryonify2D(DefaultRunner):
 
-    def baryonify(self):
+    def process(self):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
                                   Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
@@ -90,13 +92,13 @@ class Baryonify2D(DefaultRunner):
         orig_map = self.LightconeShell.map
         new_map  = orig_map.copy()
 
-        if self.Baryonification2D is None:
+        if self.model is None:
 
             #We interpolate just the 2pt correlation function part
             #since recomputing that for every halo is SLOW
-            r_temp  = np.geomspace(1e-10, 1e10, 10_000)
+            r_temp  = np.geomspace(1e-3, 1e3, 10_000)
             xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
-            xi_temp = interpolate.interp1d(r_temp, xi_temp)
+            xi_temp = interpolate.interp1d(r_temp, xi_temp, bounds_error = False, fill_value = 0)
 
 
             DMO = DarkMatterOnly(epsilon = self.config['epsilon'],
@@ -113,7 +115,7 @@ class Baryonify2D(DefaultRunner):
                                         epsilon_max = self.config['epsilon_max_Offset'])
         else:
 
-            Baryons = self.Baryonification2D
+            Baryons = self.model
 
 
         res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
@@ -123,7 +125,7 @@ class Baryonify2D(DefaultRunner):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
-            a_j = 1/(1 + 0.3730702) #1/(1 + z_j)
+            a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
 
@@ -193,9 +195,10 @@ class Baryonify2D(DefaultRunner):
         return new_map
 
 
+
 class PaintThermalSZ(DefaultRunner):
 
-    def paint(self):
+    def process(self):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
                                   Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
@@ -210,32 +213,25 @@ class PaintThermalSZ(DefaultRunner):
         healpix_inds = np.arange(hp.nside2npix(self.LightconeShell.NSIDE), dtype = int)
 
         orig_map = self.LightconeShell.map
-        new_map  = orig_map.copy()
+        new_map  = np.zeros_like(orig_map).astype(np.float64)
 
-        if self.Baryonification2D is None:
+        if self.model is None:
 
             #We interpolate just the 2pt correlation function part
             #since recomputing that for every halo is SLOW
-            r_temp  = np.geomspace(1e-10, 1e10, 10_000)
+            r_temp  = np.geomspace(1e-3, 1e3, 10_000)
             xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
             xi_temp = interpolate.interp1d(r_temp, xi_temp)
 
-
-            DMO = DarkMatterOnly(epsilon = self.config['epsilon'],
-                                 q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
-
-            DMB = DarkMatterBaryon(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
-                                   theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
-                                   M_c = self.config['M_c'], mu = self.config['mu'],
-                                   A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
-                                   eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
-                                   q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
-
-            Baryons = Baryonification2D(DMO = DMO, DMB = DMB, R_range = [1e-5, 50], N_samples = 500,
-                                        epsilon_max = self.config['epsilon_max_Offset'])
+            Baryons = Pressure(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
+                               theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
+                               M_c = self.config['M_c'], mu = self.config['mu'],
+                               A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
+                               eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
+                               q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
         else:
 
-            Baryons = self.Baryonification2D
+            Baryons = self.model
 
 
         res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
@@ -245,9 +241,11 @@ class PaintThermalSZ(DefaultRunner):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
-            a_j = 1/(1 + 0.3730702) #1/(1 + z_j)
+            a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_a = cosmo_fiducial.angular_diameter_distance(z_j).value
+            
+            dA = (res * D_a)**2 / (a_j**2) #comoving area
 
             ra_j   = self.HaloCatalog.cat['ra'][j]
             dec_j  = self.HaloCatalog.cat['dec'][j]
@@ -264,40 +262,27 @@ class PaintThermalSZ(DefaultRunner):
             x_hat = x_grid/r_grid
             y_hat = y_grid/r_grid
 
-            GnomProjector     = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
-
-            map_cutout = GnomProjector.projmap(orig_map, #map1,
-                                               lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
-                                               rot=(ra_j, dec_j))
-
-            #Need this because map value doesn't account for pixel
-            #size changes when reprojecting. It only resamples the map
-            map_cutout *= self.config['pixel_scale_factor']**2
-
-            p_ind      = GnomProjector.projmap(healpix_inds,
-                                               lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
-                                               rot=(ra_j, dec_j)).flatten().astype(int)
+            GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
+            p_ind         = GnomProjector.projmap(healpix_inds,
+                                                  lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
+                                                  rot=(ra_j, dec_j)).flatten().astype(int)
 
             p_ind, ind, inv_ind = np.unique(p_ind, return_index = True, return_inverse = True)
-            interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
-
-            #Compute the displacement needed
-            offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
             
-            in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
-            modded_map = interp_map(in_coords)
-
-            mask         = np.isfinite(modded_map) #Find which part of map cannot be modified due to out-of-bounds errors
-            mass_offsets = np.where(mask, modded_map - map_cutout.flatten(), 0) #Set those offsets to 0
-            mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
-
+            #Compute the integrated SZ effect
+            tSZ = Baryons.projected(cosmo, r_grid.flatten()/a_j, M_j, a_j) * dA
+            
+#             print(r_grid.flatten()[::10]/a_j, tSZ[::10], Baryons.projected(cosmo, np.array([1e-3, 1e-2, 1e-1, 1]), M_j, a_j))
+            
+            mask         = np.isfinite(tSZ) #Find which part of map cannot be modified due to out-of-bounds errors
+            mass_offsets = np.where(mask, tSZ, 0) #Set those offsets to 0
+            
             #Find which healpix pixels each subpixel corresponds to.
-            #Get total mass offset per healpix pixel
-            healpix_map_offsets = np.bincount(np.arange(len(p_ind))[inv_ind], weights = mass_offsets)
+            #Get total pressure per healpix pixel
+            healpix_map_offsets = np.bincount(np.arange(len(p_ind))[inv_ind], weights = tSZ)
 
-            #Add the offsets to the new healpix map
-            new_map[p_ind] += healpix_map_offsets
-            
+            #Add the pressure to the new healpix map
+            new_map[p_ind] += healpix_map_offsets            
 
 
         if isinstance(self.config['OutPath'], str):
