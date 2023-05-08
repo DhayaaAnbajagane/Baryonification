@@ -1,1 +1,1 @@
-from ..Runners.HealpixRunner import Baryonify2D
+from ..Runners.HealpixRunner import DefaultRunner, Baryonify2D, PaintThermalSZ

@@ -64,7 +64,7 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
 
     def _real(self, cosmo, r, M, a, mass_def = None):
         
-        if not (hasattr(self, 'interp_DMO') & hasattr(self, 'interp_DMB')):
+        if not (hasattr(self, 'interp3D') & hasattr(self, 'interp2D')):
             
             raise NameError("No Table created. Run setup_interpolator() method first")
 
@@ -85,7 +85,7 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
     
     def _projected(self, cosmo, r, M, a, mass_def = None):
         
-        if not (hasattr(self, 'interp_DMO') & hasattr(self, 'interp_DMB')):
+        if not (hasattr(self, 'interp3D') & hasattr(self, 'interp2D')):
             
             raise NameError("No Table created. Run setup_interpolator() method first")
 
