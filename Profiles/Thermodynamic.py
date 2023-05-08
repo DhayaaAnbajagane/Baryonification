@@ -196,7 +196,7 @@ class Pressure(SchneiderProfiles):
         
         self.nonthermal_model = nonthermal_model
         super().__init__(**kwargs)
-    
+        
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
@@ -210,14 +210,10 @@ class Pressure(SchneiderProfiles):
 
         r_integral = np.geomspace(1e-3, 30, 100) #Hardcoded ranges
 
-        r_temp  = np.geomspace(1e-3, 1e3, 10_000)
-        xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
-        xi_temp = interpolate.interp1d(r_temp, xi_temp, bounds_error = False, fill_value = 0)
-
         Total_prof = DarkMatterBaryon(epsilon = self.epsilon, a = self.a, n = self.n,
                                       theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
                                       A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, epsilon_h = self.epsilon_h,
-                                      p = self.p, q = self.q, xi_mm = xi_temp)
+                                      p = self.p, q = self.q, xi_mm = self.xi_mm)
         Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon)
 
         rho_total  = Total_prof._real(cosmo, r_integral, M, a)
@@ -292,8 +288,6 @@ class ThermalSZ(object):
         self.Pressure    = Pressure
         self.epsilon_max = epsilon_max
         
-        super().__init__()
-    
     
     def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
@@ -313,7 +307,6 @@ class ThermalSZ(object):
         prof = prof*self.Pgas_to_Pe(cosmo, r, M, a, mass_def)
         
         prof[r_use > R*self.epsilon_max] = 0
-        
         
         return prof
     

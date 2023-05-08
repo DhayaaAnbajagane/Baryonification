@@ -7,18 +7,15 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-from ..Profiles.Schneider19 import DarkMatterOnly, DarkMatterBaryon
 
 class TabulatedProfile(ccl.halos.profiles.HaloProfile):
 
-    def __init__(self, model, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, epsilon_max = 4,
-                 mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def __init__(self, model, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
 
         self.model = model
         self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
         self.R_range     = R_range
-        self.epsilon_max = epsilon_max
         self.N_samples   = N_samples
         self.mass_def    = mass_def
 
