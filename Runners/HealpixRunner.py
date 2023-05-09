@@ -80,20 +80,16 @@ class DefaultRunner(object):
         
         if isinstance(self.config['OutPath'], str):
 
+            if self.verbose: print("WRITING TO ", path_)
+                
             path_ = self.config['OutPath']
             hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(X)])
             hdu.writeto(path_, overwrite = True)
-
-            if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')
-
-            #Perform fpack. Remove existing fits, and keep only fits.fz
-            os.system('fpack -q 8192 %s'%path_)
-            os.system('rm %s'%path_)
-            
+                        
+        
         else:
             
-            if self.verbose:
-                print("OutPath is not string. Map is not saved to disk")
+            if self.verbose: print("OutPath is not string. Map is not saved to disk")
     
     
 
@@ -155,12 +151,15 @@ class Baryonify2D(DefaultRunner):
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j)
-
+            
             ra_j   = self.HaloCatalog.cat['ra'][j]
             dec_j  = self.HaloCatalog.cat['dec'][j]
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
+            
+            if Nsize < 2:
+                continue
 
             x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
 
@@ -194,8 +193,11 @@ class Baryonify2D(DefaultRunner):
             in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
             modded_map = interp_map(in_coords)
 
-            mask         = np.isfinite(modded_map) #Find which part of map cannot be modified due to out-of-bounds errors
-            mass_offsets = np.where(mask, modded_map - map_cutout.flatten(), 0) #Set those offsets to 0
+            mask       = np.isfinite(modded_map) #Find which part of map cannot be modified due to out-of-bounds errors
+            
+            if mask.sum() == 0: continue
+            
+            mass_offsets        = np.where(mask, modded_map - map_cutout.flatten(), 0) #Set those offsets to 0
             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
 
             #Find which healpix pixels each subpixel corresponds to.
@@ -239,7 +241,7 @@ class PaintThermalSZ(DefaultRunner):
 #             xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
 #             xi_temp = interpolate.interp1d(r_temp, xi_temp)
 
-            print("No model provided. We are using a Pressure Model")
+            if self.verbose: print("No model provided. We are using a Pressure Model")
             Baryons = Pressure(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
                                theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
                                M_c = self.config['M_c'], mu = self.config['mu'],
@@ -289,8 +291,10 @@ class PaintThermalSZ(DefaultRunner):
             #Compute the integrated SZ effect
             tSZ = Baryons.projected(cosmo, r_grid.flatten()/a_j, M_j, a_j) * dA
             
-#             mask = np.isfinite(tSZ) #Find which part of map cannot be modified due to out-of-bounds errors
-#             tSZ  = np.where(mask, tSZ, 0) #Set those tSZ values to 0
+            mask = np.isfinite(tSZ) #Find which part of map cannot be modified due to out-of-bounds errors
+            if mask.sum() == 0: continue
+                
+            tSZ  = np.where(mask, tSZ, 0) #Set those tSZ values to 0
             
             #Find which healpix pixels each subpixel corresponds to.
             #Get total pressure per healpix pixel
