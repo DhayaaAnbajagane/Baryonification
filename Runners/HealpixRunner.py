@@ -9,7 +9,7 @@ from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 from astropy.io import fits
 
-from ..Profiles import DarkMatterOnly, DarkMatterBaryon, Baryonification2D
+from ..Profiles import DarkMatterOnly, DarkMatterBaryon, Baryonification2D, Pressure
 from ..utils.io import HaloCatalog, LightconeShell
 
 from tqdm import tqdm
@@ -23,16 +23,19 @@ class DefaultRunner(object):
     '''
     
     def __init__(self, HaloCatalog, LightconeShell, config, model = None,
-                 mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+                 mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloCatalog    = HaloCatalog
         self.LightconeShell = LightconeShell
         self.cosmo = HaloCatalog.cosmology()
         self.model = model
-
-        self.config = self.set_config(config)
-
+        
+        
         self.mass_def = mass_def
+        self.verbose  = verbose
+        
+        self.config   = self.set_config(config)
+
 
     def set_config(self, config):
 
@@ -62,20 +65,41 @@ class DefaultRunner(object):
         out['pixel_scale_factor'] = config.get('pixel_scale_factor', 0.5)
 
 
-        #Print args for debugging state
-        print('-------UPDATING INPUT PARAMS----------')
-        for p in out.keys():
-            print('%s : %s'%(p.upper(), out[p]))
-        print('-----------------------------')
-        print('-----------------------------')
+        if self.verbose:
+            #Print args for debugging state
+            print('-------UPDATING INPUT PARAMS----------')
+            for p in out.keys():
+                print('%s : %s'%(p.upper(), out[p]))
+            print('-----------------------------')
+            print('-----------------------------')
 
         return out
+    
+    
+    def output(self, X):
+        
+        if isinstance(self.config['OutPath'], str):
+
+            path_ = self.config['OutPath']
+            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(X)])
+            hdu.writeto(path_, overwrite = True)
+
+            if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')
+
+            #Perform fpack. Remove existing fits, and keep only fits.fz
+            os.system('fpack -q 8192 %s'%path_)
+            os.system('rm %s'%path_)
+            
+        else:
+            
+            if self.verbose:
+                print("OutPath is not string. Map is not saved to disk")
     
     
 
 class Baryonify2D(DefaultRunner):
 
-    def process(self, verbose = False):
+    def process(self):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
                                   Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
@@ -121,9 +145,10 @@ class Baryonify2D(DefaultRunner):
         res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
         res_arcmin = res * 180/np.pi * 60
 
+        z_t = np.linspace(0, 10, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
-        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Baryonifying matter', disable = verbose):
+        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
@@ -181,18 +206,7 @@ class Baryonify2D(DefaultRunner):
             new_map[p_ind] += healpix_map_offsets
             
 
-
-        if isinstance(self.config['OutPath'], str):
-
-            path_ = self.config['OutPath']
-            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(new_map)])
-            hdu.writeto(path_, overwrite = True)
-
-            if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')
-
-            #Perform fpack. Remove existing fits, and keep only fits.fz
-            os.system('fpack -q 8192 %s'%path_)
-            os.system('rm %s'%path_)
+        self.output(new_map)
 
         return new_map
 
@@ -200,7 +214,7 @@ class Baryonify2D(DefaultRunner):
 
 class PaintThermalSZ(DefaultRunner):
 
-    def process(self, verbose = False):
+    def process(self):
 
         cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
                                   Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
@@ -221,16 +235,17 @@ class PaintThermalSZ(DefaultRunner):
 
             #We interpolate just the 2pt correlation function part
             #since recomputing that for every halo is SLOW
-            r_temp  = np.geomspace(1e-3, 1e3, 10_000)
-            xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
-            xi_temp = interpolate.interp1d(r_temp, xi_temp)
+#             r_temp  = np.geomspace(1e-3, 1e3, 10_000)
+#             xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
+#             xi_temp = interpolate.interp1d(r_temp, xi_temp)
 
+            print("No model provided. We are using a Pressure Model")
             Baryons = Pressure(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
                                theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
                                M_c = self.config['M_c'], mu = self.config['mu'],
                                A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
                                eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
-                               q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+                               q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
         else:
 
             Baryons = self.model
@@ -242,7 +257,7 @@ class PaintThermalSZ(DefaultRunner):
         z_t = np.linspace(0, 10, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
-        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Painting SZ', disable = verbose):
+        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
 
             M_j = self.HaloCatalog.cat['M'][j]
             z_j = self.HaloCatalog.cat['z'][j]
@@ -284,17 +299,6 @@ class PaintThermalSZ(DefaultRunner):
             #Add the pressure to the new healpix map
             new_map[p_ind] += healpix_map_offsets            
 
-
-        if isinstance(self.config['OutPath'], str):
-
-            path_ = self.config['OutPath']
-            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(new_map)])
-            hdu.writeto(path_, overwrite = True)
-
-            if os.path.exists(path_ + '.fz'): os.remove(path_ + '.fz')
-
-            #Perform fpack. Remove existing fits, and keep only fits.fz
-            os.system('fpack -q 8192 %s'%path_)
-            os.system('rm %s'%path_)
+        self.output(new_map)
 
         return new_map

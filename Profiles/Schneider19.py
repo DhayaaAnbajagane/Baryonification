@@ -158,7 +158,7 @@ class TwoHalo(SchneiderProfiles):
         if self.xi_mm is None:
             xi_mm   = ccl.correlation_3d(cosmo, a, r_use)
         else:
-            xi_mm   = self.xi_mm((r_use, np.ones_like(r)*a), )
+            xi_mm   = self.xi_mm(r_use,)
 
         delta_c = 1.686/ccl.growth_factor(cosmo, a)
         nu_M    = delta_c / ccl.sigmaM(cosmo, M_use, a)
