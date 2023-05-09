@@ -358,7 +358,8 @@ class CollisionlessMatter(SchneiderProfiles):
                 counter += 1
 
                 #Though we do a while loop, we break it off after 10 tries
-                #this seems to work well enough
+                #this seems to work well enough. The loop converges
+                #after two or three iterations.
                 if counter >= 10: break
 
         ln_M_clm = np.vstack([np.log(f_clm[m_i]) + 
