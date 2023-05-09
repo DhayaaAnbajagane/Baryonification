@@ -344,7 +344,7 @@ class CollisionlessMatter(SchneiderProfiles):
             counter = 0
             diff = np.inf #Initializing variable at infinity
             
-            while np.median(np.abs(diff)) > 1e-2:
+            while np.any(np.abs(diff)) > 1e-2:
 
                 r_f  = r_integral*relaxation_fraction[m_i]
                 M_f  = f_clm[m_i]*M_i[m_i] + np.exp(ln_M_cga[m_i](np.log(r_f))) + np.exp(ln_M_gas[m_i](np.log(r_f)))
