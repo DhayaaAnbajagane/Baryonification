@@ -27,7 +27,6 @@ class SimpleParallel(object):
         
         start = dt.datetime.now()
 
-        print(self.single_run(0, self.Runner_list[0]))
         jobs = [joblib.delayed(self.single_run)(i, Runner) for i, Runner in enumerate(self.Runner_list)]
         
         with joblib.parallel_backend("loky"):

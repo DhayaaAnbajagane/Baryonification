@@ -80,13 +80,12 @@ class DefaultRunner(object):
         
         if isinstance(self.config['OutPath'], str):
 
-            if self.verbose: print("WRITING TO ", path_)
-                
             path_ = self.config['OutPath']
             hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(X)])
             hdu.writeto(path_, overwrite = True)
                         
-        
+            if self.verbose: print("WRITING TO ", path_)
+            
         else:
             
             if self.verbose: print("OutPath is not string. Map is not saved to disk")
@@ -274,6 +273,9 @@ class PaintThermalSZ(DefaultRunner):
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
+            
+            if Nsize < 2:
+                continue
 
             x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
 
