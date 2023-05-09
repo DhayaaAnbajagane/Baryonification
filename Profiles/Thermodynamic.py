@@ -306,7 +306,13 @@ class ThermalSZ(object):
         prof = sigma_T/(m_e*c**2) * a * self.Pressure.projected(cosmo, r, M, a, mass_def)
         prof = prof*self.Pgas_to_Pe(cosmo, r, M, a, mass_def)
         
-        prof[r_use > R*self.epsilon_max] = 0
+        prof[r_use > R[:, None]*self.epsilon_max] = 0
+        
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0:
+            prof = np.squeeze(prof, axis=0)
         
         return prof
     
