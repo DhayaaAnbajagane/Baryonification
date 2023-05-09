@@ -25,10 +25,10 @@ Y         = 0.24 #Helium mass ratio
 Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 
 
-#Technically P(r -> infty) is zero, but we need finite
+#Technically P(r -> infty) is zero, but we  may need finite
 #value for numerical reasons (interpolator). This is a
 #computatational cosntant
-Pressure_at_infinity = 1e-30
+Pressure_at_infinity = 0
 
 
 class BattagliaPressure(ccl.halos.profiles.HaloProfile):
@@ -208,7 +208,7 @@ class Pressure(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        r_integral = np.geomspace(1e-3, 30, 100) #Hardcoded ranges
+        r_integral = np.geomspace(1e-3, 100, 500) #Hardcoded ranges
 
         Total_prof = DarkMatterBaryon(epsilon = self.epsilon, a = self.a, n = self.n,
                                       theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
@@ -216,8 +216,8 @@ class Pressure(SchneiderProfiles):
                                       p = self.p, q = self.q, xi_mm = self.xi_mm)
         Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon)
 
-        rho_total  = Total_prof._real(cosmo, r_integral, M, a)
-        rho_gas    = Gas_prof._real(cosmo, r_integral, M, a)
+        rho_total  = Total_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
+        rho_gas    = Gas_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
         
         dlnr    = np.log(r_integral[1]) - np.log(r_integral[0])
         M_total = 4 * np.pi * np.cumsum(r_integral**3 * rho_total * dlnr, axis = -1)
