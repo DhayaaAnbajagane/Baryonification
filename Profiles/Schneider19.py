@@ -114,7 +114,7 @@ class DarkMatter(SchneiderProfiles):
         z = 1/a - 1
 
         c_M_relation = ccl.halos.concentration.ConcentrationDiemer15(mdef = mass_def)
-#         c_M_relation = ccl.halos.concentration.ConcentrationConstant(3.2, mdef = mass_def)
+#         c_M_relation = ccl.halos.concentration.ConcentrationConstant(7, mdef = mass_def) #needed to get Schneider result
 
         c   = c_M_relation.get_concentration(cosmo, M_use, a)
         R   = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
