@@ -6,8 +6,6 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-import matplotlib.pyplot as plt
-
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     def __init__(self,
