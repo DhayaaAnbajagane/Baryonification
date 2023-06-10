@@ -182,7 +182,7 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         
         return prof
     
-class BattagliaGasNumberDensity(ccl.halos.profiles.HaloProfile):
+class BattagliaGas(ccl.halos.profiles.HaloProfile):
 
     '''
     Class that implements a Battaglia profile using the
@@ -297,10 +297,13 @@ class BattagliaGasNumberDensity(ccl.halos.profiles.HaloProfile):
 
         #Cosmological parameters
         h        = cosmo.cosmo.params.h
+        Omega_m  = cosmo.cosmo.params.Omega_m
+        Omega_b  = cosmo.cosmo.params.Omega_b
+        fb       = Omega_b/Omega_m
         RHO_CRIT = ccl.physical_constants.RHO_CRITICAL*h**2 * ccl.background.h_over_h0(cosmo, a)**2 #This is in physical coordinates
 
         rho_0, alpha, beta = rho_0[:, None], alpha[:, None], beta[:, None]
-        prof = RHO_CRIT * rho_0 * (x/x_c)**gamma * (1 + (x/x_c)**alpha)**-((beta - gamma)/alpha)
+        prof = RHO_CRIT * fb * rho_0 * (x/x_c)**gamma * (1 + (x/x_c)**alpha)**-((beta - gamma)/alpha)
 
         # Battaglia profile has validity limits for redshift, mass, and distance from halo center.
         # Here, we enforce the distance limit at R/R_Delta > X, where X is input by user
