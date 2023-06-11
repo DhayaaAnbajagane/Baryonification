@@ -5,7 +5,7 @@ import pyccl as ccl
 
 
 
-class HaloCatalog(object):
+class HaloLightConeCatalog(object):
     '''
     Class that reads in a halo catalog (in a lightcone)
     and stores it along with other useful quantities.
@@ -39,6 +39,42 @@ class HaloCatalog(object):
             cat['M']   = M
 
         self.cat   = cat
+
+        keys = cosmo.keys()
+        if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
+                ('Omega_b' in keys) & ('n_s' in keys) & ('w0' in keys)):
+
+            raise ValueError("Not all cosmology parameters provided. I need Omega_m, sigma8, h, sigma8, Omega_b, n_s, w0")
+        else:
+            self.cosmo = cosmo
+
+    def data(self):
+
+        return self.cat
+
+    def cosmology(self):
+
+        return self.cosmo
+    
+
+class HaloNDCatalog(object):
+    '''
+    Class that reads in a halo catalog (in a 2D or 3D field)
+    and stores it along with other useful quantities.
+    Used in baryonification pipeline
+    '''
+
+    def __init__(self, x = None, y = None, z = None, M = None, redshift = None, cosmo = None):
+
+        dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
+        cat = np.zeros(len(ra), dtype)
+
+        cat['x'] = x
+        cat['y'] = y
+        cat['z'] = 0 if z is None else z #We'll just add filler to z-column for now
+        cat['M'] = M
+
+        self.cat = cat
 
         keys = cosmo.keys()
         if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
@@ -89,6 +125,52 @@ class LightconeShell(object):
     def data(self):
 
         return self.map
+
+    def cosmology(self):
+
+        return self.cosmo
+    
+
+class GriddedMap(object):
+
+    '''
+    Class that reads in a Gridded map (either 2D or 3D)
+    and stores it along with other useful quantities.
+    Used in baryonification pipeline
+    '''
+
+    def __init__(self, map = None, redshift = None, bins = None, cosmo = None):
+        '''
+        bins: Must be coordinates of map along a given axis, in physical Mpc
+        '''
+        self.map      = map
+        self.redshift = redshift
+        self.Npix     = self.map.shape[0]
+        self.res      = bins[1] - bins[0]
+
+        
+        self.is2D = True if len(self.map.shape) == 2 else False
+
+        if self.is2D:
+            assert self.map.shape[0] == self.map.shape[1] #Maps have to be square maps
+            self.bins = np.meshgrid(bins, bins, indexing = 'xy')
+        else:
+            assert (self.map.shape[0] == self.map.shape[1]) & (self.map.shape[1] == self.map.shape[2]) #Maps have to be cubic maps
+            self.bins = np.meshgrid(bins, bins, bins, indexing = 'xy')
+
+        keys = cosmo.keys()
+        if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
+                ('Omega_b' in keys) & ('n_s' in keys) & ('w0' in keys)):
+
+            raise ValueError("Not all cosmology parameters provided. I need Omega_m, sigma8, h, sigma8, Omega_b, n_s, w0")
+        else:
+            self.cosmo = cosmo
+
+
+    def data(self):
+
+        return self.map
+
 
     def cosmology(self):
 
