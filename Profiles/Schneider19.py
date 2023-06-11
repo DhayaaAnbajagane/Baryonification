@@ -243,6 +243,7 @@ class Gas(SchneiderProfiles):
 
         u = r_use/(self.theta_co*R)[:, None]
         v = r_use/(self.theta_ej*R)[:, None]
+        w = r_use/(self.theta_ej*R*4)[:, None]
 
         f_star = self.A * (self.M1/M_use)**self.eta_star
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
@@ -258,9 +259,12 @@ class Gas(SchneiderProfiles):
 
         u_integral = r_integral/(self.theta_co*R)[:, None]
         v_integral = r_integral/(self.theta_ej*R)[:, None]
+        w_integral = r_integral/(self.theta_ej*R*4)[:, None]
 
 
-        prof_integral  = 1/(1 + u_integral)**beta/(1 + v_integral)**((7 - beta)/2) #Using (1 + v) instead of (1 + v**2) because it matches Battaglia better
+        #Using (1 + v) instead of (1 + v**2) because it matches Battaglia better
+        #Adding a
+        prof_integral  = 1/(1 + u_integral)**beta / (1 + v_integral)**((7 - beta)/2) / (1 + w_integral**2)**2
 
         Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = -1)
         Normalization  = Normalization.integrate(np.log(r_integral[0]), np.log(r_integral[-1]))
@@ -272,7 +276,9 @@ class Gas(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
 
-        prof  = 1/(1 + u)**beta/(1 + v)**((7 - beta)/2) #Using (1 + v) instead of (1 + v**2) because it matches Battaglia better
+        #Using (1 + v) instead of (1 + v**2) because it matches Battaglia better
+        #Also including a truncation radius just like in DM case
+        prof  = 1/(1 + u)**beta / (1 + v)**((7 - beta)/2) / (1 + w**2)**2 
         prof *= f_gas*M_tot/Normalization
 
 #         prof[r_use > 50*R[:, None]] = 0
