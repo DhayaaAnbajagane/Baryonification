@@ -301,3 +301,82 @@ class PaintThermalSZShell(DefaultRunner):
         self.output(new_map)
 
         return new_map
+    
+
+class PaintProfilesShell(DefaultRunner):
+
+    def process(self):
+
+        cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
+                                  Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
+
+
+        cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
+                              Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
+                              sigma8  = self.cosmo['sigma8'],  n_s = self.cosmo['n_s'],
+                              matter_power_spectrum = 'linear')
+        cosmo.compute_sigma()
+
+        healpix_inds = np.arange(hp.nside2npix(self.LightconeShell.NSIDE), dtype = int)
+
+        orig_map = self.LightconeShell.map
+        new_map  = np.zeros_like(orig_map).astype(np.float64)
+
+        assert self.model is not None, "You MUST provide a model"
+        Baryons = self.model
+
+        res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
+        res_arcmin = res * 180/np.pi * 60
+
+        z_t = np.linspace(0, 10, 1000)
+        D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
+        
+        for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
+
+            M_j = self.HaloLightConeCatalog.cat['M'][j]
+            z_j = self.HaloLightConeCatalog.cat['z'][j]
+            a_j = 1/(1 + z_j)
+            R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
+            D_j = D_a(z_j)
+            
+            dA = (res * D_j)**2 / (a_j**2) #comoving area
+
+            ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
+            dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
+
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
+            Nsize  = int(Nsize // 2)*2 #Force it to be even
+            
+            if Nsize < 2:
+                continue
+
+            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
+
+            x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
+
+            r_grid = np.sqrt(x_grid**2 + y_grid**2)
+
+            GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
+            p_ind         = GnomProjector.projmap(healpix_inds,
+                                                  lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
+                                                  rot=(ra_j, dec_j)).flatten().astype(int)
+
+            p_ind, ind, inv_ind = np.unique(p_ind, return_index = True, return_inverse = True)
+            
+            Painting = Baryons.projected(cosmo, r_grid.flatten()/a_j, M_j, a_j) * dA
+            
+            mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
+            if mask.sum() == 0: continue
+                
+            Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
+            
+            #Find which healpix pixels each subpixel corresponds to.
+            #Get total pressure per healpix pixel
+            healpix_map_offsets = np.bincount(np.arange(len(p_ind))[inv_ind], weights = Painting)
+
+            #Add the pressure to the new healpix map
+            new_map[p_ind] += healpix_map_offsets            
+
+        self.output(new_map)
+
+        return new_map

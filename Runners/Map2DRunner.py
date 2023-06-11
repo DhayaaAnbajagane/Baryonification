@@ -276,3 +276,95 @@ class PaintThermalSZGrid(DefaultRunnerGrid):
         self.output(new_map)
 
         return new_map
+
+
+
+class PaintProfilesGrid(DefaultRunnerGrid):
+
+    def process(self):
+
+        assert self.GriddedMap.is2D == True, "Can only paint tSZ on 2D maps. You have passed a 3D Map"
+
+        cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
+                              Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
+                              sigma8  = self.cosmo['sigma8'],  n_s = self.cosmo['n_s'],
+                              matter_power_spectrum = 'linear')
+        cosmo.compute_sigma()
+
+        orig_map = self.GriddedMap.map
+        new_map  = np.zeros_like(orig_map).astype(np.float64)
+
+        if self.model is None:
+
+            if self.verbose: print("No model provided. We are using a Pressure Model")
+            Baryons = Pressure(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
+                               theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
+                               M_c = self.config['M_c'], mu = self.config['mu'],
+                               A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
+                               eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
+                               q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
+        else:
+
+            Baryons = self.model
+
+
+        for j in tqdm(range(self.HaloNDCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
+
+            M_j = self.HaloNDCatalog.cat['M'][j]
+            x_j = self.HaloNDCatalog.cat['x'][j]
+            y_j = self.HaloNDCatalog.cat['y'][j]
+            z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
+
+            a_j = 1/(1 + self.HaloNDCatalog.redshift)
+            R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
+            
+            res    = self.GriddedMap.res
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / res
+            Nsize  = int(Nsize // 2)*2 #Force it to be even
+            
+            if Nsize < 2:
+                continue
+
+            x  = np.linspace(-Nsize/2, Nsize/2, Nsize) * res
+            pixel_width = Nsize//2
+
+            if self.GriddedMap.is2D:
+                x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
+                r_grid = np.sqrt(x_grid**2 + y_grid**2)
+
+                x_hat = x_grid/r_grid
+                y_hat = y_grid/r_grid
+
+                cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)))
+                slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
+                                slice(cen[1] - pixel_width, cen[1] + pixel_width))
+                
+                func = Baryons.projected
+            
+            else:
+                x_grid, y_grid, z_grid = np.meshgrid(x, x, x, indexing = 'xy')
+                r_grid = np.sqrt(x_grid**2 + y_grid**2 + z_grid**2)
+
+                x_hat = x_grid/r_grid
+                y_hat = y_grid/r_grid
+                z_hat = z_grid/r_grid
+
+                cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)), np.argmin(np.abs(bins - z_j)))
+                slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
+                                slice(cen[1] - pixel_width, cen[1] + pixel_width),
+                                slice(cen[2] - pixel_width, cen[2] + pixel_width))
+                
+                func = Baryons.real
+
+        
+            integral_element = res**2 if self.GriddedMap.is2D else res**3
+            Painting = func(cosmo, r_grid.flatten()/a_j, M_j, a_j) * integral_element
+
+            #Add the offsets to the new healpix map
+            new_map[slices] += Painting.reshape(r_grid.shape)
+
+        self.output(new_map)
+
+        return new_map
+
+        return new_map
