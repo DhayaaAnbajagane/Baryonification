@@ -254,7 +254,7 @@ class Gas(SchneiderProfiles):
 
         #Integrate over wider region in radii to get normalization of gas profile
 
-        r_integral = np.geomspace(1e-3, 300, 500)
+        r_integral = np.geomspace(1e-3, 100, 500)
 
         u_integral = r_integral/(self.theta_co*R)[:, None]
         v_integral = r_integral/(self.theta_ej*R)[:, None]
