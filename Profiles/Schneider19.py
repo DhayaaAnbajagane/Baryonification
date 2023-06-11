@@ -260,7 +260,7 @@ class Gas(SchneiderProfiles):
         v_integral = r_integral/(self.theta_ej*R)[:, None]
 
 
-        prof_integral  = 1/(1 + u_integral)**beta/(1 + v_integral)**((7 - beta)/2) #Using (1 + v) instead of (1 + v**2) because it matches Battaglia better
+        prof_integral  = 1/(1 + u_integral)**beta/(1 + v_integral**2)**((7 - beta)/2) 
 
         Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = -1)
         Normalization  = Normalization.integrate(np.log(r_integral[0]), np.log(r_integral[-1]))
@@ -272,7 +272,7 @@ class Gas(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
 
-        prof  = 1/(1 + u)**beta/(1 + v)**((7 - beta)/2) #Using (1 + v) instead of (1 + v**2) because it matches Battaglia better
+        prof  = 1/(1 + u)**beta/(1 + v**2)**((7 - beta)/2)
         prof *= f_gas*M_tot/Normalization
 
 #         prof[r_use > 50*R[:, None]] = 0
