@@ -276,7 +276,7 @@ class Gas(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
 
-        prof  = 1/(1 + u)**beta / (1 + v**2)**((7 - beta)/2) / (1 + w**2)**2
+        prof  = 1/(1 + u)**beta / (1 + v)**((7 - beta)/2) / (1 + w**2)**2
         prof *= f_gas*M_tot/Normalization
 
 #         prof[r_use > 50*R[:, None]] = 0
