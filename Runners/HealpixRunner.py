@@ -10,7 +10,7 @@ from astropy import units as u
 from astropy.io import fits
 
 from ..Profiles import DarkMatterOnly, DarkMatterBaryon, Baryonification2D, Pressure
-from ..utils.io import HaloCatalog, LightconeShell
+from ..utils.io import HaloLightConeCatalog, LightconeShell
 
 from tqdm import tqdm
 
@@ -22,12 +22,12 @@ class DefaultRunner(object):
     A class that contains relevant utils for input/output
     '''
     
-    def __init__(self, HaloCatalog, LightconeShell, config, model = None,
+    def __init__(self, HaloLightConeCatalog, LightconeShell, config, model = None,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
-        self.HaloCatalog    = HaloCatalog
+        self.HaloLightConeCatalog    = HaloLightConeCatalog
         self.LightconeShell = LightconeShell
-        self.cosmo = HaloCatalog.cosmology()
+        self.cosmo = HaloLightConeCatalog.cosmology()
         self.model = model
         
         
@@ -113,22 +113,15 @@ class Baryonify2D(DefaultRunner):
 
         if self.model is None:
 
-            #We interpolate just the 2pt correlation function part
-            #since recomputing that for every halo is SLOW
-            r_temp  = np.geomspace(1e-3, 1e3, 10_000)
-            xi_temp = ccl.correlation_3d(cosmo, a, r_temp)
-            xi_temp = interpolate.interp1d(r_temp, xi_temp, bounds_error = False, fill_value = 0)
-
-
             DMO = DarkMatterOnly(epsilon = self.config['epsilon'],
-                                 q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+                                 q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
 
             DMB = DarkMatterBaryon(epsilon = self.config['epsilon'], a = self.config['a'], n = self.config['n'],
                                    theta_ej = self.config['theta_ej'], theta_co = self.config['theta_co'],
                                    M_c = self.config['M_c'], mu = self.config['mu'],
                                    A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
                                    eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
-                                   q = self.config['q'], p = self.config['p'], xi_mm = xi_temp, R_range = [1e-5, 40])
+                                   q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
 
             Baryons = Baryonification2D(DMO = DMO, DMB = DMB, R_range = [1e-5, 50], N_samples = 500,
                                         epsilon_max = self.config['epsilon_max_Offset'])
@@ -143,16 +136,16 @@ class Baryonify2D(DefaultRunner):
         z_t = np.linspace(0, 10, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
-        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
+        for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
 
-            M_j = self.HaloCatalog.cat['M'][j]
-            z_j = self.HaloCatalog.cat['z'][j]
+            M_j = self.HaloLightConeCatalog.cat['M'][j]
+            z_j = self.HaloLightConeCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j)
             
-            ra_j   = self.HaloCatalog.cat['ra'][j]
-            dec_j  = self.HaloCatalog.cat['dec'][j]
+            ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
+            dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
@@ -258,18 +251,18 @@ class PaintThermalSZ(DefaultRunner):
         z_t = np.linspace(0, 10, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
-        for j in tqdm(range(self.HaloCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
+        for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
 
-            M_j = self.HaloCatalog.cat['M'][j]
-            z_j = self.HaloCatalog.cat['z'][j]
+            M_j = self.HaloLightConeCatalog.cat['M'][j]
+            z_j = self.HaloLightConeCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j)
             
             dA = (res * D_j)**2 / (a_j**2) #comoving area
 
-            ra_j   = self.HaloCatalog.cat['ra'][j]
-            dec_j  = self.HaloCatalog.cat['dec'][j]
+            ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
+            dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
