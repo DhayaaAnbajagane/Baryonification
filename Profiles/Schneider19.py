@@ -243,7 +243,7 @@ class Gas(SchneiderProfiles):
 
         u = r_use/(self.theta_co*R)[:, None]
         v = r_use/(self.theta_ej*R)[:, None]
-        w = r_use/(20*R)[:, None] #We hardcode 50*R200c as a choice for radial cutoff of profile
+        w = r_use/(50*R)[:, None] #We hardcode 50*R200c as a choice for radial cutoff of profile
 
         f_star = self.A * (self.M1/M_use)**self.eta_star
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
