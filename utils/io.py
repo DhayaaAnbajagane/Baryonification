@@ -67,7 +67,7 @@ class HaloNDCatalog(object):
     def __init__(self, x = None, y = None, z = None, M = None, redshift = None, cosmo = None):
 
         dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
-        cat = np.zeros(len(ra), dtype)
+        cat = np.zeros(len(x), dtype)
 
         cat['x'] = x
         cat['y'] = y
@@ -75,6 +75,7 @@ class HaloNDCatalog(object):
         cat['M'] = M
 
         self.cat = cat
+        self.redshift = redshift
 
         keys = cosmo.keys()
         if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
@@ -147,16 +148,18 @@ class GriddedMap(object):
         self.redshift = redshift
         self.Npix     = self.map.shape[0]
         self.res      = bins[1] - bins[0]
-
+        self.bins     = bins
         
         self.is2D = True if len(self.map.shape) == 2 else False
 
         if self.is2D:
             assert self.map.shape[0] == self.map.shape[1] #Maps have to be square maps
-            self.bins = np.meshgrid(bins, bins, indexing = 'xy')
+            self.grid = np.meshgrid(bins, bins, indexing = 'xy')
         else:
             assert (self.map.shape[0] == self.map.shape[1]) & (self.map.shape[1] == self.map.shape[2]) #Maps have to be cubic maps
-            self.bins = np.meshgrid(bins, bins, bins, indexing = 'xy')
+            self.grid = np.meshgrid(bins, bins, bins, indexing = 'xy')
+            
+        self.inds_flattened = np.arange(self.grid[0].size).reshape(self.grid[0].shape)
 
         keys = cosmo.keys()
         if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
