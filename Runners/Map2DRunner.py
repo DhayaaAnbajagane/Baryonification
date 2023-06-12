@@ -281,6 +281,16 @@ class PaintThermalSZGrid(DefaultRunnerGrid):
 
 class PaintProfilesGrid(DefaultRunnerGrid):
 
+    
+    def pick_indices(self, center, width, Npix):
+        
+        inds = np.arange(center - width, center + width)
+        inds = np.where((inds) < 0,     inds + Npix, inds)
+        inds = np.where((inds) >= Npix, inds - Npix, inds)
+        
+        return inds
+    
+    
     def process(self):
 
         assert self.GriddedMap.is2D == True, "Can only paint tSZ on 2D maps. You have passed a 3D Map"
@@ -292,7 +302,10 @@ class PaintProfilesGrid(DefaultRunnerGrid):
         cosmo.compute_sigma()
 
         orig_map = self.GriddedMap.map
-        new_map  = np.zeros_like(orig_map).astype(np.float64)
+        new_map  = np.zeros(orig_map.size, dtype = np.float64)
+        
+        grid = self.GriddedMap.grid
+        bins = self.GriddedMap.bins
 
         if self.model is None:
 
@@ -335,11 +348,12 @@ class PaintProfilesGrid(DefaultRunnerGrid):
                 x_hat = x_grid/r_grid
                 y_hat = y_grid/r_grid
 
-                cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)))
-                slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
-                                slice(cen[1] - pixel_width, cen[1] + pixel_width))
+                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), pixel_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), pixel_width, self.GriddedMap.Npix)
                 
-                func = Baryons.projected
+                inds = self.GriddedMap.inds_flattened[x_inds, :][:, y_inds].flatten()
+                
+                profile = Baryons.projected
             
             else:
                 x_grid, y_grid, z_grid = np.meshgrid(x, x, x, indexing = 'xy')
@@ -349,22 +363,28 @@ class PaintProfilesGrid(DefaultRunnerGrid):
                 y_hat = y_grid/r_grid
                 z_hat = z_grid/r_grid
 
-                cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)), np.argmin(np.abs(bins - z_j)))
-                slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
-                                slice(cen[1] - pixel_width, cen[1] + pixel_width),
-                                slice(cen[2] - pixel_width, cen[2] + pixel_width))
+                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), pixel_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), pixel_width, self.GriddedMap.Npix)
+                z_inds = self.pick_indices(np.argmin(np.abs(bins - z_j)), pixel_width, self.GriddedMap.Npix)
                 
-                func = Baryons.real
+                inds = self.GriddedMap.inds_flattened[x_inds, ...][:, y_inds, :][..., z_inds].flatten()
+                
+                profile = Baryons.real
 
         
             integral_element = res**2 if self.GriddedMap.is2D else res**3
-            Painting = func(cosmo, r_grid.flatten()/a_j, M_j, a_j) * integral_element
+            Painting = profile(cosmo, r_grid.flatten()/a_j, M_j, a_j) * integral_element
+            
+            mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
+            if mask.sum() == 0: continue
+                
+            Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
 
             #Add the offsets to the new healpix map
-            new_map[slices] += Painting.reshape(r_grid.shape)
+            new_map[inds] += Painting
+            
+        new_map = new_map.reshape(orig_map.shape)
 
         self.output(new_map)
-
-        return new_map
 
         return new_map
