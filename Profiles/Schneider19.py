@@ -255,6 +255,7 @@ class Gas(SchneiderProfiles):
         f_gas  = f_bar - f_star
 
         beta   = 3 - (self.M_c/M_use)**self.mu
+        beta   = np.where(beta < 0, 0, beta)
 
         f_gas, beta = f_gas[:, None], beta[:, None]
 
