@@ -10,7 +10,7 @@ from astropy import units as u
 import sys
 sys.path.insert(0, '/home/dhayaa/Desktop/Quijote/')
 from Baryonification.Runners.HealpixRunner import BaryonifyShell, PaintThermalSZShell
-from Baryonification.utils import HaloCatalog, LightconeShell, TabulatedProfile, SplitJoinParallel, SimpleParallel
+from Baryonification.utils import HaloLightConeCatalog, LightconeShell, TabulatedProfile, SplitJoinParallel, SimpleParallel
 from Baryonification.Profiles import DarkMatterOnly, DarkMatterBaryon, Baryonification2D, Pressure, ThermalSZ
 
 if __name__ == '__main__':
@@ -139,9 +139,9 @@ if __name__ == '__main__':
         map1 = LightconeShell(map = map1, cosmo = cosmo_dict)
         
         halo_ind = np.where((Halos['z'] < z_bin_edges[i]) & (Halos['z'] > z_bin_edges[i + 1]))[0]
-        catalog1 = HaloCatalog(ra = Halos['ra'][halo_ind], dec = Halos['dec'][halo_ind],
+        catalog1 = HaloLightConeCatalog(ra = Halos['ra'][halo_ind], dec = Halos['dec'][halo_ind],
                                M = Halos['M'][halo_ind], z = Halos['z'][halo_ind], cosmo = cosmo_dict)
-        catalog2 = HaloCatalog(ra = Halos['ra'][:], dec = Halos['dec'][:],
+        catalog2 = HaloLightConeCatalog(ra = Halos['ra'][:], dec = Halos['dec'][:],
                                M = Halos['M'][:], z = Halos['z'][:], cosmo = cosmo_dict)
         
         Name = 'New_Baryonified_Density_shell' + ('_%s'%args['Name'] if args['Name'] != '' else '')
