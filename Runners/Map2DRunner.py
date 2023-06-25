@@ -52,6 +52,8 @@ class DefaultRunnerGrid(object):
         out['mu']        = config.get('mu',       0.4)  #slope of the relation between gas profile slope and mass
         out['eta_star']  = config.get('eta_star', 0.3)  #
         out['eta_cga']   = config.get('eta_star', 0.6)
+        out['beta_star'] = config.get('beta_star', -1.5)  #Slope of Stellar-to-halo mass fraction at low masses
+        out['beta_cga']  = config.get('beta_cga',  -1.5)
         out['A']         = config.get('A',        0.09)
         out['M1']        = config.get('M1',       3e11) #in Msun
         out['epsilon_h'] = config.get('epsilon_h', 0.015)
@@ -116,6 +118,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                                    M_c = self.config['M_c'], mu = self.config['mu'],
                                    A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
                                    eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
+                                   beta_star = self.config['beta_star'], beta_cga = self.config['beta_cga'],
                                    q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
 
             model   = Baryonification2D if GriddedMap.is2D else Baryonification3D
@@ -229,6 +232,7 @@ class PaintThermalSZGrid(DefaultRunnerGrid):
                                M_c = self.config['M_c'], mu = self.config['mu'],
                                A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
                                eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
+                               beta_star = self.config['beta_star'], beta_cga = self.config['beta_cga'],
                                q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
         else:
 
@@ -315,6 +319,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
                                M_c = self.config['M_c'], mu = self.config['mu'],
                                A = self.config['A'], M1 = self.config['M1'], epsilon_h = self.config['epsilon_h'],
                                eta_star = self.config['eta_star'], eta_cga = self.config['eta_cga'],
+                               beta_star = self.config['beta_star'], beta_cga = self.config['beta_cga'],
                                q = self.config['q'], p = self.config['p'], xi_mm = None, R_range = [1e-5, 40])
         else:
 
