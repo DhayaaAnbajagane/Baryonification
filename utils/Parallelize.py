@@ -60,7 +60,7 @@ class SplitJoinParallel(object):
         
     def split_run(self, Runner):
         
-        HaloCat  = Runner.HaloCatalog
+        HaloCat  = Runner.HaloLightConeCatalog
         Shell    = Runner.LightconeShell
         config   = Runner.config.copy()
         cosmo    = Runner.cosmo
