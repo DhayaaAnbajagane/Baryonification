@@ -52,6 +52,8 @@ if __name__ == '__main__':
     my_parser.add_argument('--mu',        action='store', type = float, default = 0.4)
     my_parser.add_argument('--eta_star',  action='store', type = float, default = 0.3)
     my_parser.add_argument('--eta_cga',   action='store', type = float, default = 0.6)
+    my_parser.add_argument('--beta_star', action='store', type = float, default = -1.5)
+    my_parser.add_argument('--beta_cga',  action='store', type = float, default = -1.5)
     my_parser.add_argument('--A',         action='store', type = float, default = 0.09)
     my_parser.add_argument('--M1',        action='store', type = float, default = 3e11) #in Msun
     my_parser.add_argument('--epsilon_h', action='store', type = float, default = 0.015)
@@ -107,6 +109,7 @@ if __name__ == '__main__':
                       M_c = args['M_c'], mu = args['mu'],
                       A = args['A'], M1 = args['M1'], epsilon_h = args['epsilon_h'],
                       eta_star = args['eta_star'], eta_cga = args['eta_cga'],
+                      beta_star = args['beta_star'], beta_cga = args['beta_cga'],
                       q = args['q'], p = args['p'], xi_mm = None, R_range = [1e-5, 40])
 
     DMB = DarkMatterBaryon(epsilon = args['epsilon'], a = args['a'], n = args['n'],
@@ -114,6 +117,7 @@ if __name__ == '__main__':
                       M_c = args['M_c'], mu = args['mu'],
                       A = args['A'], M1 = args['M1'], epsilon_h = args['epsilon_h'],
                       eta_star = args['eta_star'], eta_cga = args['eta_cga'],
+                      beta_star = args['beta_star'], beta_cga = args['beta_cga'],
                       q = args['q'], p = args['p'], xi_mm = None, R_range = [1e-5, 40])
     
     Baryons = Baryonification2D(DMO, DMB, ccl_cosmo = cosmo, epsilon_max = args['epsilon_max_Offset'])
@@ -160,6 +164,7 @@ if __name__ == '__main__':
                        M_c = args['M_c'], mu = args['mu'],
                        A = args['A'], M1 = args['M1'], epsilon_h = args['epsilon_h'],
                        eta_star = args['eta_star'], eta_cga = args['eta_cga'],
+                       beta_star = args['eta_star'], beta_cga = args['eta_cga'],
                        q = args['q'], p = args['p'], xi_mm = None, R_range = [1e-5, 40])
     Baryons = ThermalSZ(Baryons, epsilon_max = args['epsilon_max_Offset'])
     Baryons = TabulatedProfile(Baryons, cosmo)
