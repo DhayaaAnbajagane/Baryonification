@@ -55,8 +55,11 @@ class Pressure(SchneiderProfiles):
         Total_prof = DarkMatterBaryon(epsilon = self.epsilon, a = self.a, n = self.n,
                                       theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
                                       A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, epsilon_h = self.epsilon_h,
+                                      beta_star = self.beta_star, beta_cga = self.beta_cga, 
                                       p = self.p, q = self.q, xi_mm = self.xi_mm)
-        Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon)
+        Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, 
+                         M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon,
+                         beta_star = self.beta_star, beta_cga = self.beta_cga)
         
 
         rho_total  = Total_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
