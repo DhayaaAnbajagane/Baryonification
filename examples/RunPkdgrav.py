@@ -9,7 +9,7 @@ from astropy import units as u
 
 import sys
 sys.path.insert(0, '/home/dhayaa/Desktop/Quijote/')
-from Baryonification.Runners import Baryonify2D, PaintThermalSZ
+from Baryonification.Runners.HealpixRunner import BaryonifyShell, PaintThermalSZShell
 from Baryonification.utils import HaloCatalog, LightconeShell, TabulatedProfile, SplitJoinParallel, SimpleParallel
 from Baryonification.Profiles import DarkMatterOnly, DarkMatterBaryon, Baryonification2D, Pressure, ThermalSZ
 
@@ -149,7 +149,7 @@ if __name__ == '__main__':
 
         args['OutPath'] = path_
 
-        Runner_list.append(Baryonify2D(catalog1, map1, args, model = Baryons, verbose = False))
+        Runner_list.append(BaryonifyShell(catalog1, map1, args, model = Baryons, verbose = False))
     
     Runner = SimpleParallel(Runner_list)
     Runner.process()
@@ -170,7 +170,7 @@ if __name__ == '__main__':
     Baryons = TabulatedProfile(Baryons, cosmo)
     Baryons.setup_interpolator(N_samples_z = 30, N_samples_Mass = 30)
 
-    Runner = PaintThermalSZ(catalog2, map1, args, model = Baryons)
+    Runner = PaintThermalSZShell(catalog2, map1, args, model = Baryons)
     Runner = SplitJoinParallel(Runner)
 
     Runner.process()
