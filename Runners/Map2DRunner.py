@@ -381,6 +381,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
             Painting = profile(cosmo, r_grid.flatten()/a_j, M_j, a_j) * integral_element
             
             mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
+            mask = mask & (r_grid.flatten()/a_j < R_j*self.config['epsilon_max_Offset'])
             if mask.sum() == 0: continue
                 
             Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
