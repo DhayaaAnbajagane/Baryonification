@@ -13,6 +13,20 @@ from Baryonification.Runners.HealpixRunner import BaryonifyShell, PaintThermalSZ
 from Baryonification.utils import HaloLightConeCatalog, LightconeShell, TabulatedProfile, SplitJoinParallel, SimpleParallel
 from Baryonification.Profiles import DarkMatterOnly, DarkMatterBaryon, Baryonification2D, Pressure, ThermalSZ
 
+def get_param(log_file_name, parameter_name):
+    '''
+    Function taken from Lorne's repo:
+    https://github.com/LorneWhiteway/lfi_project/blob/master/scripts/utility.py
+    '''
+    with open(log_file_name, "r") as f:
+        for line in f:
+            if parameter_name in line:
+                tokenised_string = line.split(" ")
+                for (token, i) in zip(tokenised_string, range(len(tokenised_string))):
+                    if token == parameter_name or token == (parameter_name + ":"):
+                        if i < len(tokenised_string) - 1:
+                            return float(tokenised_string[i + 1])
+
 if __name__ == '__main__':
 
     import sys, os
@@ -23,7 +37,7 @@ if __name__ == '__main__':
     import numpy as np
     import healpy as hp
     from utility import one_healpix_map_from_basefilename
-    from utils import build_z_values_file, get_param
+    #from utils import build_z_values_file, get_param
     import glob
 
     from astropy.table import Table
