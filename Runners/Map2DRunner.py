@@ -527,3 +527,128 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
         self.output(new_map)
 
         return new_map
+
+
+class PaintProfilesHybridGrid(DefaultRunnerGrid):
+
+
+    def __init__(self, HaloNDCatalog, GriddedMap, config, Painting_model = None, Canvas_model = None, 
+                 constant_factor = 1, max_difference = 1e10,
+                 mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
+        
+        self.Canvas_model    = Canvas_model
+        self.max_difference  = max_difference
+        self.constant_factor = constant_factor
+
+        super().__init__(HaloNDCatalog, GriddedMap, config, Painting_model, mass_def, verbose)
+    
+
+    def pick_indices(self, center, width, Npix):
+        
+        inds = np.arange(center - width, center + width)
+        inds = np.where((inds) < 0,     inds + Npix, inds)
+        inds = np.where((inds) >= Npix, inds - Npix, inds)
+        
+        return inds
+    
+    
+    def process(self):
+
+        assert self.GriddedMap.is2D == True, "Can only paint tSZ on 2D maps. You have passed a 3D Map"
+
+        cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
+                              Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
+                              sigma8  = self.cosmo['sigma8'],  n_s = self.cosmo['n_s'],
+                              matter_power_spectrum = 'linear')
+        cosmo.compute_sigma()
+
+        orig_map = self.GriddedMap.map
+        new_map  = np.zeros(orig_map.size, dtype = np.float64)
+
+        orig_map_flattened = orig_map.flatten()
+        
+        grid = self.GriddedMap.grid
+        bins = self.GriddedMap.bins
+
+        Paint  = self.model
+        Canvas = self.Canvas_model
+
+        for j in tqdm(range(self.HaloNDCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
+
+            M_j = self.HaloNDCatalog.cat['M'][j]
+            x_j = self.HaloNDCatalog.cat['x'][j]
+            y_j = self.HaloNDCatalog.cat['y'][j]
+            z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
+
+            a_j = 1/(1 + self.HaloNDCatalog.redshift)
+            R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
+            
+            res    = self.GriddedMap.res
+            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / res
+            Nsize  = int(Nsize // 2)*2 #Force it to be even
+            
+            if Nsize < 2:
+                continue
+
+            x  = np.linspace(-Nsize/2, Nsize/2, Nsize) * res
+            pixel_width = Nsize//2
+
+            if self.GriddedMap.is2D:
+                x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
+                r_grid = np.sqrt(x_grid**2 + y_grid**2)
+
+                x_hat = x_grid/r_grid
+                y_hat = y_grid/r_grid
+
+                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), pixel_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), pixel_width, self.GriddedMap.Npix)
+                
+                inds = self.GriddedMap.inds_flattened[x_inds, :][:, y_inds].flatten()
+                
+                paint_profile  = Paint.projected
+                canvas_profile = Canvas.projected 
+            
+            else:
+                x_grid, y_grid, z_grid = np.meshgrid(x, x, x, indexing = 'xy')
+                r_grid = np.sqrt(x_grid**2 + y_grid**2 + z_grid**2)
+
+                x_hat = x_grid/r_grid
+                y_hat = y_grid/r_grid
+                z_hat = z_grid/r_grid
+
+                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), pixel_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), pixel_width, self.GriddedMap.Npix)
+                z_inds = self.pick_indices(np.argmin(np.abs(bins - z_j)), pixel_width, self.GriddedMap.Npix)
+                
+                inds = self.GriddedMap.inds_flattened[x_inds, ...][:, y_inds, :][..., z_inds].flatten()
+                
+                paint_profile  = Paint.real
+                canvas_profile = Canvas.real 
+
+        
+            integral_element = res**2 if self.GriddedMap.is2D else res**3
+
+            Painting  = paint_profile(cosmo, r_grid.flatten()/a_j, M_j, a_j) * integral_element
+            Canvasing = canvas_profile(cosmo, r_grid.flatten()/a_j, M_j, a_j)
+            
+            Paint_factor = self.constant_factor*orig_map_flattened[inds]/Canvasing
+            Paint_factor = np.where(Paint_factor > self.max_difference, self.max_difference, Paint_factor) #Fix a maximum deviation
+            Painting     = Paint_factor * Painting
+
+            mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
+            mask = mask & (r_grid.flatten()/a_j < R_j*self.config['epsilon_max_Offset'])
+            if mask.sum() == 0: continue
+            
+                
+            Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
+
+            #Add the values to the new grid map
+            new_map[inds] += Painting
+            
+            
+            
+        new_map = new_map.reshape(orig_map.shape)
+
+        self.output(new_map)
+
+        return new_map
