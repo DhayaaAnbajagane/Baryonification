@@ -405,8 +405,7 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
         self.Canvas_model = Canvas_model
         self.Nbin_interp  = Nbin_interp
 
-        super().__init__(HaloNDCatalog, GriddedMap, config, Painting_model = None,
-                 mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True)
+        super().__init__(HaloNDCatalog, GriddedMap, config, Painting_model, mass_def, verbose)
     
 
     def pick_indices(self, center, width, Npix):
@@ -494,25 +493,34 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
         
             integral_element = res**2 if self.GriddedMap.is2D else res**3
 
-            r_array  = np.geomspace(np.min(r_grid)/a_j, np.max(r_grid)/a_j, bins = self.Nbin_interp)
-            Painting = paint_profile(cosmo,  r_array, M_j, a_j) * integral_element
-            Canvas   = canvas_profile(cosmo, r_array, M_j, a_j) * integral_element
+            r_array   = np.geomspace(np.min(r_grid)/a_j, np.max(r_grid)/a_j, self.Nbin_interp)
+            Painting  = paint_profile(cosmo,  r_array, M_j, a_j) * integral_element
+            Canvasing = canvas_profile(cosmo, r_array, M_j, a_j)
             
-            gmask    = np.isfinite(Painting) & np.isfinite(Canvas)
-            Painting = Painting[gmask]
-            Canvas   = Canvas[mask]
+            gmask     = np.isfinite(Painting) & np.isfinite(Canvasing)
+            Painting  = Painting[gmask]
+            Canvasing = Canvasing[gmask]
             
-            interp   = interpolate.CubicSpline(np.log(Canvas), np.log(Painting), extrapolate = False)
-            Painting = np.exp(interp(np.log(orig_map_flattened[inds])))
+            sort_ind  = np.argsort(Canvasing) #Need ascending order for CubicSpline to work
+            Painting  = Painting[sort_ind]
+            Canvasing = Canvasing[sort_ind]
+            
+            interp    = interpolate.CubicSpline(np.log(Canvasing), np.log(Painting), extrapolate = False)
+            delta_in  = np.log(orig_map_flattened[inds])
 
+            Painting  =  np.exp(interp(delta_in))
+            
             mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
             mask = mask & (r_grid.flatten()/a_j < R_j*self.config['epsilon_max_Offset'])
             if mask.sum() == 0: continue
+            
                 
             Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
 
             #Add the values to the new grid map
             new_map[inds] += Painting
+            
+            
             
         new_map = new_map.reshape(orig_map.shape)
 
