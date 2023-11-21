@@ -94,6 +94,14 @@ class DefaultRunnerGrid(object):
 
 class BaryonifyGrid(DefaultRunnerGrid):
 
+    def pick_indices(self, center, width, Npix):
+        
+        inds = np.arange(center - width, center + width)
+        inds = np.where((inds) < 0,     inds + Npix, inds)
+        inds = np.where((inds) >= Npix, inds - Npix, inds)
+        
+        return inds
+    
     def process(self):
 
         
@@ -104,7 +112,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
         cosmo.compute_sigma()
 
         orig_map = self.GriddedMap.map
-        new_map  = orig_map.copy()
+        new_map  = orig_map.copy().flatten()
         bins     = self.GriddedMap.bins
 
         if self.model is None:
@@ -157,11 +165,13 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 x_hat = x_grid/r_grid
                 y_hat = y_grid/r_grid
 
-                cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)))
-                slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
-                                slice(cen[1] - pixel_width, cen[1] + pixel_width))
-                map_cutout = self.GriddedMap.map[slices]
-
+                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), pixel_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), pixel_width, self.GriddedMap.Npix)
+                
+                inds = self.GriddedMap.inds_flattened[x_inds, :][:, y_inds].flatten()
+                
+                map_cutout = self.GriddedMap.map.flatten()[inds].reshape(x_grid.shape)
+                
                 interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
                 #Compute the displacement needed
@@ -178,12 +188,14 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 y_hat = y_grid/r_grid
                 z_hat = z_grid/r_grid
 
-                cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)), np.argmin(np.abs(bins - z_j)))
-                slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
-                                slice(cen[1] - pixel_width, cen[1] + pixel_width),
-                                slice(cen[2] - pixel_width, cen[2] + pixel_width))
-                map_cutout = self.GriddedMap.map[slices]
-
+                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), pixel_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), pixel_width, self.GriddedMap.Npix)
+                z_inds = self.pick_indices(np.argmin(np.abs(bins - z_j)), pixel_width, self.GriddedMap.Npix)
+                
+                inds = self.GriddedMap.inds_flattened[x_inds, ...][:, y_inds, :][..., z_inds].flatten()
+                
+                map_cutout = self.GriddedMap.map.flatten()[inds].reshape(x_grid.shape)
+                
                 interp_map = interpolate.RegularGridInterpolator((x, x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
                 #Compute the displacement needed
@@ -202,7 +214,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
 
             #Add the offsets to the new healpix map
-            new_map[slices] += mass_offsets.reshape(map_cutout.shape)
+            new_map[inds] += mass_offsets
 
         self.output(new_map)
 
