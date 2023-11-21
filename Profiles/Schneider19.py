@@ -10,27 +10,29 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     def __init__(self,
                  epsilon = None, a = None, n = None,
-                 theta_ej = None, theta_co = None, M_c = None, mu = None,
-                 A = None, M1 = None, eta_star = None, eta_cga = None, beta_star = None, beta_cga = None, epsilon_h = None,
+                 theta_ej = None, theta_co = None, M_c = None, mu = None, gamma = None, delta = None,
+                 A = None, M1 = None, eta = None, eta_delta = None, beta = None, beta_delta = None, epsilon_h = None,
                  q = None, p = None, xi_mm = None, R_range = [1e-10, 1e10]):
 
 
-        self.epsilon   = epsilon
-        self.a         = a
-        self.n         = n
-        self.theta_ej  = theta_ej
-        self.theta_co  = theta_co
-        self.M_c       = M_c
-        self.mu        = mu
-        self.A         = A
-        self.M1        = M1
-        self.eta_star  = eta_star
-        self.eta_cga   = eta_cga
-        self.beta_star = beta_star
-        self.beta_cga  = beta_cga 
-        self.epsilon_h = epsilon_h
-        self.q         = q
-        self.p         = p
+        self.epsilon    = epsilon
+        self.a          = a
+        self.n          = n
+        self.theta_ej   = theta_ej
+        self.theta_co   = theta_co
+        self.M_c        = M_c
+        self.mu         = mu
+        self.gamma      = gamma
+        self.delta      = delta
+        self.A          = A
+        self.M1         = M1
+        self.eta        = eta
+        self.eta_delta  = eta_delta
+        self.beta       = beta
+        self.beta_delta = beta_delta 
+        self.epsilon_h  = epsilon_h
+        self.q          = q
+        self.p          = p
 
         #Import all other parameters from the base CCL Profile class
         super(SchneiderProfiles, self).__init__()
@@ -210,7 +212,10 @@ class Stars(SchneiderProfiles):
 
         R   = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        f_cga = self.A * ((M_use/self.M1)**self.beta_cga + (M_use/self.M1)**self.eta_cga)**-1
+        eta_cga  = self.eta  + self.eta_delta
+        beta_cga = self.beta + self.beta_delta
+        
+        f_cga = self.A * ((M_use/self.M1)**beta_cga + (M_use/self.M1)**eta_cga)**-1
 
         R_h   = self.epsilon_h * R
 
@@ -250,12 +255,11 @@ class Gas(SchneiderProfiles):
         v = r_use/(self.theta_ej*R)[:, None]
         # w = r_use/(50*R)[:, None] #We hardcode 50*R200c as a choice for radial cutoff of profile
 
-        f_star = self.A * ((M_use/self.M1)**self.beta_star + (M_use/self.M1)**self.eta_star)**-1
+        f_star = self.A * ((M_use/self.M1)**self.beta + (M_use/self.M1)**self.eta)**-1
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
         f_gas  = f_bar - f_star
 
-        beta   = 3 - (self.M_c/M_use)**self.mu
-        beta   = np.where(beta < 0, 0, beta)
+        beta   = 3*(M_use/self.M_c)**self.mu / (1 + (M_use/self.M_c)**self.mu)
 
         f_gas, beta = f_gas[:, None], beta[:, None]
 
@@ -265,12 +269,8 @@ class Gas(SchneiderProfiles):
 
         u_integral = r_integral/(self.theta_co*R)[:, None]
         v_integral = r_integral/(self.theta_ej*R)[:, None]
-        # w_integral = r_integral/(50*R)[:, None]
 
-        #We modify the profile slightly. We use (1 + v) instead of (1 + v^2) so that we match Battaglia (and also)
-        #match the GNFW form. We include a second truncation radius beyond that for numerical reasons so 
-        #that M(< r_infty) is a finite number.
-        prof_integral  = 1/(1 + u_integral)**beta / (1 + v_integral**2)**((7 - beta)/2) #/ (1 + w_integral**2)**2
+        prof_integral  = 1/(1 + u_integral)**beta / (1 + v_integral**self.gamma)**((self.delta - beta)/self.gamma)
 
         Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = -1)
         Normalization  = Normalization.integrate(np.log(r_integral[0]), np.log(r_integral[-1]))
@@ -282,7 +282,7 @@ class Gas(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
 
-        prof  = 1/(1 + u)**beta / (1 + v**2)**((7 - beta)/2) #/ (1 + w**2)**2
+        prof  = 1/(1 + u)**beta / (1 + v**self.gamma)**((self.delta - beta)/self.gamma)
         prof *= f_gas*M_tot/Normalization
 
 #         prof[r_use > 50*R[:, None]] = 0
@@ -312,8 +312,11 @@ class CollisionlessMatter(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        f_star = self.A * ((M_use/self.M1)**self.beta_star + (M_use/self.M1)**self.eta_star)**-1
-        f_cga  = self.A * ((M_use/self.M1)**self.beta_cga  + (M_use/self.M1)**self.eta_cga)**-1
+        eta_cga  = self.eta  + self.eta_delta
+        beta_cga = self.beta + self.beta_delta
+        
+        f_star = self.A * ((M_use/self.M1)**self.beta + (M_use/self.M1)**self.eta)**-1
+        f_cga  = self.A * ((M_use/self.M1)**beta_cga  + (M_use/self.M1)**eta_cga)**-1
         f_star = f_star[:, None]
         f_cga  = f_cga[:, None]
         f_sga  = f_star - f_cga
@@ -321,10 +324,11 @@ class CollisionlessMatter(SchneiderProfiles):
         
         
         NFW_DMO    = DarkMatter(epsilon = self.epsilon)
-        Stars_prof = Stars(A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, 
-                           epsilon_h = self.epsilon_h, epsilon = self.epsilon, beta_star = self.beta_star, beta_cga = self.beta_cga)
-        Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, 
-                         A = self.A, M1 = self.M1, eta_star = self.eta_star, beta_star = self.beta_star, beta_cga = self.beta_cga, epsilon = self.epsilon)
+        Stars_prof = Stars(A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
+                           epsilon_h = self.epsilon_h, epsilon = self.epsilon, beta = self.beta, beta_delta = self.beta_delta)
+        Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
+                         mu = self.mu, gamma = self.gamma, delta = self.delta,
+                         A = self.A, M1 = self.M1, eta = self.eta, beta = self.beta, beta_delta = self.beta_delta, epsilon = self.epsilon)
 
         rho_i      = NFW_DMO.real(cosmo, r_integral, M, a, mass_def)
         rho_cga    = Stars_prof.real(cosmo, r_integral, M, a, mass_def)
@@ -426,14 +430,16 @@ class DarkMatterBaryon(SchneiderProfiles):
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         Collisionless_prof = CollisionlessMatter(epsilon = self.epsilon, a = self.a, n = self.n,
-                                                 theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
-                                                 A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, 
-                                                 beta_star = self.beta_star, beta_cga = self.beta_cga, epsilon_h = self.epsilon_h)
-        Stars_prof         = Stars(A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, 
-                                   epsilon_h = self.epsilon_h, epsilon = self.epsilon, beta_star = self.beta_star, beta_cga = self.beta_cga, )
-        Gas_prof           = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, 
-                                 A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon,
-                                 beta_star = self.beta_star, beta_cga = self.beta_cga)
+                                                 theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
+                                                 mu = self.mu, gamma = self.gamma, delta = self.delta,
+                                                 A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
+                                                 beta = self.beta, beta_delta = self.beta_delta, epsilon_h = self.epsilon_h)
+        Stars_prof         = Stars(A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
+                                   epsilon_h = self.epsilon_h, epsilon = self.epsilon, beta = self.beta, beta_delta = self.beta_delta, )
+        Gas_prof           = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
+                                 mu = self.mu, gamma = self.gamma, delta = self.delta,
+                                 A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, epsilon = self.epsilon,
+                                 beta = self.beta, beta_delta = self.beta_delta)
         TwoHalo_prof       = TwoHalo(p = self.p, q = self.q, xi_mm = self.xi_mm)
 
 

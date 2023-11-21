@@ -160,7 +160,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 cen          = (np.argmin(np.abs(bins - x_j)), np.argmin(np.abs(bins - y_j)))
                 slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
                                 slice(cen[1] - pixel_width, cen[1] + pixel_width))
-                map_cutout = map[slices]
+                map_cutout = self.GriddedMap.map[slices]
 
                 interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
@@ -182,7 +182,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 slices       = (slice(cen[0] - pixel_width, cen[0] + pixel_width),  
                                 slice(cen[1] - pixel_width, cen[1] + pixel_width),
                                 slice(cen[2] - pixel_width, cen[2] + pixel_width))
-                map_cutout = map[slices]
+                map_cutout = self.GriddedMap.map[slices]
 
                 interp_map = interpolate.RegularGridInterpolator((x, x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
