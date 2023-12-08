@@ -45,23 +45,25 @@ class DefaultRunner(object):
         out['OutPath']   = config.get('OutPath', None)
         out['Name']      = config.get('Name', '')
 
-        out['epsilon']   = config.get('epsilon',  4.0)  #Truncation radius for DM NFW profile normalized by R200c
-        out['theta_ej']  = config.get('theta_ej', 4.0)  #Radius up to which gas is ejected, normalized by R200c
-        out['theta_co']  = config.get('theta_co', 0.1)  #Radius within which gas is fully collapsed/bound, normalized by R200c
-        out['M_c']       = config.get('M_c',      2e14) #in Msun, normalization of the relation between gas profile slope and mass
-        out['mu']        = config.get('mu',       0.4)  #slope of the relation between gas profile slope and mass
-        out['eta_star']  = config.get('eta_star', 0.3)  #Slope of Stellar-to-halo mass fraction at high masses
-        out['eta_cga']   = config.get('eta_star', 0.6)
-        out['beta_star'] = config.get('beta_star', -1.5)  #Slope of Stellar-to-halo mass fraction at low masses
-        out['beta_cga']  = config.get('beta_cga',  -1.5)
-        out['A']         = config.get('A',        0.09)
-        out['M1']        = config.get('M1',       3e11) #Halo Mass where the Mstar/Mhalo relation peaks, defined in Msun
-        out['epsilon_h'] = config.get('epsilon_h', 0.015)
-        out['a']         = config.get('a', 0.3)
-        out['n']         = config.get('n', 2.0)
-        out['p']         = config.get('p', 0.3)
-        out['q']         = config.get('q', 0.707)
-
+        out['epsilon']    = config.get('epsilon',  4.0)  #Truncation radius for DM NFW profile normalized by R200c
+        out['theta_ej']   = config.get('theta_ej', 4.0)  #Radius up to which gas is ejected, normalized by R200c
+        out['theta_co']   = config.get('theta_co', 0.1)  #Radius within which gas is fully collapsed/bound, normalized by R200c
+        out['M_c']        = config.get('M_c',      2e14) #in Msun, normalization of the relation between gas profile slope and mass
+        out['mu']         = config.get('mu',       1.0)  #slope of the relation between gas profile slope and mass
+        out['gamma']      = config.get('gamma',    2.5)  #slope of the relation between gas profile slope and mass
+        out['delta']      = config.get('delta',    7.0)  #slope of the relation between gas profile slope and mass
+        out['eta']        = config.get('eta',      0.2)  #Slope of Stellar-to-halo mass fraction at high masses
+        out['eta_delta']  = config.get('eta_delta', 0.1)
+        out['beta']       = config.get('beta', -1.5)  #Slope of Stellar-to-halo mass fraction at low masses
+        out['beta_delta'] = config.get('beta_delta',  0)
+        out['A']          = config.get('A',        0.055)
+        out['M1']         = config.get('M1',       3e11) #Halo Mass where the Mstar/Mhalo relation peaks, defined in Msun
+        out['epsilon_h']  = config.get('epsilon_h', 0.015)
+        out['a']          = config.get('a', 0.3)
+        out['n']          = config.get('n', 2.0)
+        out['p']          = config.get('p', 0.3)
+        out['q']          = config.get('q', 0.707)
+        
         out['epsilon_max_Cutout'] = config.get('epsilon_max_Cutout', 5)
         out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 5)
         out['pixel_scale_factor'] = config.get('pixel_scale_factor', 0.5)
