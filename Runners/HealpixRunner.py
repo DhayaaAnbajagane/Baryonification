@@ -148,6 +148,9 @@ class BaryonifyShell(DefaultRunner):
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j)
+            c_j = self.HaloNDCatalog.cat['c'][j] if Baryons.use_concentration else None
+            
+            
             
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
@@ -185,7 +188,7 @@ class BaryonifyShell(DefaultRunner):
             interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
             #Compute the displacement needed
-            offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
+            offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j).reshape(r_grid.shape) * a_j
             
             in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
             modded_map = interp_map(in_coords)

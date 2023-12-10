@@ -12,7 +12,7 @@ class HaloLightConeCatalog(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, ra = None, dec = None, M = None, z = None, path = None, cosmo = None):
+    def __init__(self, ra = None, dec = None, M = None, z = None, c = None, path = None, cosmo = None):
 
         if (path is None) & ((ra is None) | (dec is None) | (M is None) |(z is None)):
 
@@ -31,12 +31,15 @@ class HaloLightConeCatalog(object):
               isinstance(z, np.ndarray)  & isinstance(M, np.ndarray)):
 
             dtype = [('M', '>f'), ('z', '>f'), ('ra', '>f'), ('dec', '>f')]
+            if c is not None: dtype += [('c', '>f')]
+                
             cat = np.zeros(len(ra), dtype)
 
             cat['ra']  = ra
             cat['dec'] = dec
             cat['z']   = z
             cat['M']   = M
+            if c is not None: cat['c'] = c
 
         self.cat   = cat
 
@@ -64,15 +67,19 @@ class HaloNDCatalog(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, x = None, y = None, z = None, M = None, redshift = None, cosmo = None):
+    def __init__(self, x = None, y = None, z = None, M = None, c = None, redshift = None, cosmo = None):
 
         dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
+        if c is not None: dtype += [('c', '>f')]
+        
+        
         cat = np.zeros(len(x), dtype)
 
         cat['x'] = x
         cat['y'] = y
         cat['z'] = 0 if z is None else z #We'll just add filler to z-column for now
         cat['M'] = M
+        if c is not None: cat['c'] = c
 
         self.cat = cat
         self.redshift = redshift

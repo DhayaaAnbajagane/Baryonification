@@ -9,6 +9,7 @@ from astropy import units as u
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     def __init__(self,
+                 cdelta = None,
                  epsilon = None, a = None, n = None,
                  theta_ej = None, theta_co = None, M_c = None, mu = None, gamma = None, delta = None,
                  A = None, M1 = None, eta = None, eta_delta = None, beta = None, beta_delta = None, epsilon_h = None,
@@ -33,6 +34,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         self.epsilon_h  = epsilon_h
         self.q          = q
         self.p          = p
+        self.cdelta     = cdelta
 
         #Import all other parameters from the base CCL Profile class
         super(SchneiderProfiles, self).__init__()
@@ -53,6 +55,18 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
         self.precision_fftlog['padding_lo_extra'] = 1e-2
         self.precision_fftlog['padding_hi_extra'] = 1e2
+        
+    
+    @property
+    def model_params(self):
+        
+        params = {k:v for k,v in vars(self).items() if k in ['cdelta', 'epsilon', 'a', 'n', 
+                                                             'theta_ej', 'theta_co', 'M_c', 'mu', 'gamma', 'delta',
+                                                             'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
+                                                             'q', 'p']
+                 }
+                  
+        return params
 
 
     def _projected_realspace(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -116,20 +130,34 @@ class DarkMatter(SchneiderProfiles):
 
         z = 1/a - 1
 
-        c_M_relation = ccl.halos.concentration.ConcentrationDiemer15(mdef = mass_def)
-#         c_M_relation = ccl.halos.concentration.ConcentrationConstant(7, mdef = mass_def) #needed to get Schneider result
-
+        if self.cdelta is None:
+            c_M_relation = ccl.halos.concentration.ConcentrationDiemer15(mdef = mass_def) #Use the diemer calibration
+            
+        else:
+            c_M_relation = ccl.halos.concentration.ConcentrationConstant(self.cdelta, mdef = mass_def)
+            #c_M_relation = ccl.halos.concentration.ConcentrationConstant(7, mdef = mass_def) #needed to get Schneider result
+            
         c   = c_M_relation.get_concentration(cosmo, M_use, a)
         R   = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
         r_s = R/c
         r_t = R*self.epsilon
-
-        rho_c = M_use/(4*np.pi*r_s**3*(np.log(1 + c) - c/(1 + c)))
-
-        r_s, rho_c, r_t = r_s[:, None], rho_c[:, None], r_t[:, None]
         
-        prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2
+        r_s, r_t = r_s[:, None], r_t[:, None]
 
+        
+        #Get the normalization (rho_c) numerically
+        #The analytic integral doesn't work since we have a truncation radii now.
+        r_integral = np.geomspace(1e-6, 100, 500)
+
+        prof_integral  = 1/(r_integral/r_s * (1 + r_integral/r_s)**2) * 1/(1 + (r_integral/r_t)**2)**2
+        Normalization  = [interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * p) for p in prof_integral]
+        Normalization  = np.array([N_i.integrate(np.log(r_integral[0]), np.log(R_i)) for N_i, R_i in zip(Normalization, R)])
+        
+        rho_c = M_use/Normalization
+        rho_c = rho_c[:, None]
+
+        prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2
+        
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
             prof = np.squeeze(prof, axis=-1)
@@ -140,6 +168,7 @@ class DarkMatter(SchneiderProfiles):
 #         assert np.all(prof >= 0), "Something went wrong. Profile is negative in some places"
 
         return prof
+
 
 class TwoHalo(SchneiderProfiles):
     '''
@@ -202,8 +231,8 @@ class Stars(SchneiderProfiles):
         self.precision_fftlog['padding_lo_fftlog'] = 1e-5
         self.precision_fftlog['padding_hi_fftlog'] = 1e5
 
+    
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
@@ -222,7 +251,7 @@ class Stars(SchneiderProfiles):
         f_cga, R_h = f_cga[:, None], R_h[:, None]
 
         r_integral = np.geomspace(1e-3, 100, 500)
-        rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M_use, a, mass_def)
+        rho   = DarkMatter(**self.model_params).real(cosmo, r_integral, M_use, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
@@ -265,7 +294,7 @@ class Gas(SchneiderProfiles):
 
         #Integrate over wider region in radii to get normalization of gas profile
 
-        r_integral = np.geomspace(1e-3, 100, 500)
+        r_integral = np.geomspace(1e-6, 100, 500)
 
         u_integral = r_integral/(self.theta_co*R)[:, None]
         v_integral = r_integral/(self.theta_ej*R)[:, None]
@@ -278,12 +307,13 @@ class Gas(SchneiderProfiles):
 
         del u_integral, v_integral, prof_integral
 
-        rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M, a, mass_def)
+        rho   = DarkMatter(**self.model_params).real(cosmo, r_integral, M, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
-
+        
         prof  = 1/(1 + u)**beta / (1 + v**self.gamma)**((self.delta - beta)/self.gamma)
         prof *= f_gas*M_tot/Normalization
+        
 
 #         prof[r_use > 50*R[:, None]] = 0
 
@@ -323,12 +353,9 @@ class CollisionlessMatter(SchneiderProfiles):
         f_clm  = 1 - cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m + f_sga
         
         
-        NFW_DMO    = DarkMatter(epsilon = self.epsilon)
-        Stars_prof = Stars(A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
-                           epsilon_h = self.epsilon_h, epsilon = self.epsilon, beta = self.beta, beta_delta = self.beta_delta)
-        Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                         mu = self.mu, gamma = self.gamma, delta = self.delta,
-                         A = self.A, M1 = self.M1, eta = self.eta, beta = self.beta, beta_delta = self.beta_delta, epsilon = self.epsilon)
+        NFW_DMO    = DarkMatter(**self.model_params)
+        Stars_prof = Stars(**self.model_params)
+        Gas_prof   = Gas(**self.model_params)
 
         rho_i      = NFW_DMO.real(cosmo, r_integral, M, a, mass_def)
         rho_cga    = Stars_prof.real(cosmo, r_integral, M, a, mass_def)
@@ -409,8 +436,8 @@ class DarkMatterOnly(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        DarkMatter_prof = DarkMatter(epsilon = self.epsilon)
-        TwoHalo_prof    = TwoHalo(p = self.p, q = self.q, xi_mm = self.xi_mm)
+        DarkMatter_prof = DarkMatter(**self.model_params)
+        TwoHalo_prof    = TwoHalo(**self.model_params, xi_mm = self.xi_mm)
 
         prof = (DarkMatter_prof.real(cosmo, r, M, a, mass_def) +
                 TwoHalo_prof.real(cosmo, r, M, a, mass_def))
@@ -429,18 +456,10 @@ class DarkMatterBaryon(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        Collisionless_prof = CollisionlessMatter(epsilon = self.epsilon, a = self.a, n = self.n,
-                                                 theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                                                 mu = self.mu, gamma = self.gamma, delta = self.delta,
-                                                 A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
-                                                 beta = self.beta, beta_delta = self.beta_delta, epsilon_h = self.epsilon_h)
-        Stars_prof         = Stars(A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
-                                   epsilon_h = self.epsilon_h, epsilon = self.epsilon, beta = self.beta, beta_delta = self.beta_delta, )
-        Gas_prof           = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                                 mu = self.mu, gamma = self.gamma, delta = self.delta,
-                                 A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, epsilon = self.epsilon,
-                                 beta = self.beta, beta_delta = self.beta_delta)
-        TwoHalo_prof       = TwoHalo(p = self.p, q = self.q, xi_mm = self.xi_mm)
+        Collisionless_prof = CollisionlessMatter(**self.model_params)
+        Stars_prof         = Stars(**self.model_params)
+        Gas_prof           = Gas(**self.model_params)
+        TwoHalo_prof       = TwoHalo(**self.model_params, xi_mm = self.xi_mm)
 
 
         #Need DMO for normalization
@@ -448,7 +467,7 @@ class DarkMatterBaryon(SchneiderProfiles):
         #This is just for the onehalo term
         r_integral = np.geomspace(1e-3, 100, 500)
 
-        rho   = DarkMatter(epsilon = self.epsilon).real(cosmo, r_integral, M, a, mass_def)
+        rho   = DarkMatter(**self.model_params).real(cosmo, r_integral, M, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral)
 
         rho   = (Collisionless_prof.real(cosmo, r_integral, M, a, mass_def) +
