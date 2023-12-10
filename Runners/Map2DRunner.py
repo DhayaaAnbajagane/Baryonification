@@ -144,6 +144,8 @@ class BaryonifyGrid(DefaultRunnerGrid):
             x_j = self.HaloNDCatalog.cat['x'][j]
             y_j = self.HaloNDCatalog.cat['y'][j]
             z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
+            
+            c_j = self.HaloNDCatalog.cat['c'][j] if Baryons.use_concentration else None
 
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
@@ -175,7 +177,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
                 #Compute the displacement needed
-                offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
+                offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j).reshape(r_grid.shape) * a_j
             
                 in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
                 
@@ -199,7 +201,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 interp_map = interpolate.RegularGridInterpolator((x, x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
 
                 #Compute the displacement needed
-                offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j).reshape(r_grid.shape) * a_j
+                offset     = Baryons.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j).reshape(r_grid.shape) * a_j
             
                 in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), 
                                         (y_grid + offset*y_hat).flatten(),

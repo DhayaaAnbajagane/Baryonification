@@ -52,16 +52,8 @@ class Pressure(SchneiderProfiles):
 
         r_integral = np.geomspace(1e-3, 100, 500) #Hardcoded ranges
 
-        Total_prof = DarkMatterBaryon(epsilon = self.epsilon, a = self.a, n = self.n,
-                                      theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                                      mu = self.mu, gamma = self.gamma, delta = self.delta,
-                                      A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, 
-                                      beta = self.beta, beta_delta = self.beta_delta, epsilon_h = self.epsilon_h,
-                                      p = self.p, q = self.q, xi_mm = self.xi_mm)
-        Gas_prof   = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                         mu = self.mu, gamma = self.gamma, delta = self.delta,
-                         A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, epsilon = self.epsilon,
-                         beta = self.beta, beta_delta = self.beta_delta)
+        Total_prof = DarkMatterBaryon(**self.model_params, xi_mm = self.xi_mm)
+        Gas_prof   = Gas(**self.model_params)
         
 
         rho_total  = Total_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
@@ -150,10 +142,7 @@ class GasNumberDensity(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        rho  = Gas(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                   mu = self.mu, gamma = self.gamma, delta = self.delta,
-                   A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, epsilon = self.epsilon,
-                   beta = self.beta, beta_delta = self.beta_delta)
+        rho  = Gas(**self.model_params)
         rho  = rho.real(cosmo, r_use, M, a, mass_def = mass_def)
         prof = rho / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
         
@@ -180,14 +169,8 @@ class Temperature(Pressure):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        P   = Pressure(nonthermal_model = self.nonthermal_model, epsilon = self.epsilon, a = self.a, n = self.n,
-                                      theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
-                                      A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, epsilon_h = self.epsilon_h,
-                                      p = self.p, q = self.q, xi_mm = self.xi_mm)
-        n   = GasNumberDensity(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, 
-                               mu = self.mu, gamma = self.gamma, delta = self.delta,
-                               A = self.A, M1 = self.M1, eta = self.eta, eta_delta = self.eta_delta, epsilon = self.epsilon,
-                               beta = self.beta, beta_delta = self.beta_delta)
+        P   = Pressure(nonthermal_model = self.nonthermal_model, **self.model_params, xi_mm = self.xi_mm)
+        n   = GasNumberDensity(**self.model_params)
 
         P   = P.real(cosmo, r_use, M, a, mass_def = mass_def)
         n   = n.real(cosmo, r_use, M, a, mass_def = mass_def)
@@ -224,11 +207,8 @@ class CustomTemperature(ccl.halos.profiles.HaloProfile):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        P   = self.Pressure(nonthermal_model = self.nonthermal_model, epsilon = self.epsilon, a = self.a, n = self.n,
-                                      theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu,
-                                      A = self.A, M1 = self.M1, eta_star = self.eta_star, eta_cga = self.eta_cga, epsilon_h = self.epsilon_h,
-                                      p = self.p, q = self.q, xi_mm = self.xi_mm)
-        n   = self.GasNumberDensity(theta_ej = self.theta_ej, theta_co = self.theta_co, M_c = self.M_c, mu = self.mu, A = self.A, M1 = self.M1, eta_star = self.eta_star, epsilon = self.epsilon)
+        P   = self.Pressure(nonthermal_model = self.nonthermal_model, **self.model_params)
+        n   = self.GasNumberDensity(**self.model_params)
 
         P   = P.real(cosmo, r_use, M, a, mass_def = mass_def)
         n   = n.real(cosmo, r_use, M, a, mass_def = mass_def)
