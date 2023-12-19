@@ -59,22 +59,24 @@ if __name__ == '__main__':
     my_parser.add_argument('--pixel_scale_factor', action='store', type = float, default = 0.5)
     
     #Schneider Baryonification parameters as described in 1810.08629
-    my_parser.add_argument('--epsilon',   action='store', type = float, default = 4.0)
-    my_parser.add_argument('--theta_ej',  action='store', type = float, default = 4.0)
-    my_parser.add_argument('--theta_co',  action='store', type = float, default = 0.1)
-    my_parser.add_argument('--M_c',       action='store', type = float, default = 2e14) #in Msun
-    my_parser.add_argument('--mu',        action='store', type = float, default = 0.4)
-    my_parser.add_argument('--eta_star',  action='store', type = float, default = 0.3)
-    my_parser.add_argument('--eta_cga',   action='store', type = float, default = 0.6)
-    my_parser.add_argument('--beta_star', action='store', type = float, default = -1.5)
-    my_parser.add_argument('--beta_cga',  action='store', type = float, default = -1.5)
-    my_parser.add_argument('--A',         action='store', type = float, default = 0.09)
-    my_parser.add_argument('--M1',        action='store', type = float, default = 3e11) #in Msun
-    my_parser.add_argument('--epsilon_h', action='store', type = float, default = 0.015)
-    my_parser.add_argument('--a',         action='store', type = float, default = 0.3)
-    my_parser.add_argument('--n',         action='store', type = float, default = 2.0)
-    my_parser.add_argument('--p',         action='store', type = float, default = 0.3)
-    my_parser.add_argument('--q',         action='store', type = float, default = 0.707)
+    my_parser.add_argument('--epsilon',     action='store', type = float, default = 4.0)
+    my_parser.add_argument('--theta_ej',    action='store', type = float, default = 4.0)
+    my_parser.add_argument('--theta_co',    action='store', type = float, default = 0.1)
+    my_parser.add_argument('--M_c',         action='store', type = float, default = 2e14) #in Msun
+    my_parser.add_argument('--mu',          action='store', type = float, default = 1.0)
+    my_parser.add_argument('--gamma',       action='store', type = float, default = 2.5)
+    my_parser.add_argument('--delta',       action='store', type = float, default = 7.0)
+    my_parser.add_argument('--eta',         action='store', type = float, default = 0.2)
+    my_parser.add_argument('--eta_delta',   action='store', type = float, default = 0.1)
+    my_parser.add_argument('--beta',        action='store', type = float, default = -1.5)
+    my_parser.add_argument('--beta_delta',  action='store', type = float, default = 0)
+    my_parser.add_argument('--A',           action='store', type = float, default = 0.055)
+    my_parser.add_argument('--M1',          action='store', type = float, default = 3e11) #in Msun
+    my_parser.add_argument('--epsilon_h',   action='store', type = float, default = 0.015)
+    my_parser.add_argument('--a',           action='store', type = float, default = 0.3)
+    my_parser.add_argument('--n',           action='store', type = float, default = 2.0)
+    my_parser.add_argument('--p',           action='store', type = float, default = 0.3)
+    my_parser.add_argument('--q',           action='store', type = float, default = 0.707)
 
     args = vars(my_parser.parse_args())
 

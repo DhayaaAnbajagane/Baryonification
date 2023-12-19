@@ -6,6 +6,11 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
+model_params = ['cdelta', 'epsilon', 'a', 'n', 
+                'theta_ej', 'theta_co', 'M_c', 'mu', 'gamma', 'delta',
+                'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
+                'q', 'p']
+
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     def __init__(self,
@@ -60,11 +65,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     @property
     def model_params(self):
         
-        params = {k:v for k,v in vars(self).items() if k in ['cdelta', 'epsilon', 'a', 'n', 
-                                                             'theta_ej', 'theta_co', 'M_c', 'mu', 'gamma', 'delta',
-                                                             'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
-                                                             'q', 'p']
-                 }
+        params = {k:v for k,v in vars(self).items() if k in params}
                   
         return params
 

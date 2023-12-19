@@ -2,12 +2,8 @@
 import numpy as np
 import pyccl as ccl
 from tqdm import tqdm
-
 from scipy import interpolate
-from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
-from astropy import units as u
 
-from ..Profiles.Schneider19 import DarkMatterOnly, DarkMatterBaryon
 
 class BaryonificationClass(object):
 
@@ -21,7 +17,6 @@ class BaryonificationClass(object):
         self.epsilon_max = epsilon_max
         self.N_samples   = N_samples
         self.mass_def    = mass_def
-        
         self.use_concentration = use_concentration
 
 
@@ -31,13 +26,14 @@ class BaryonificationClass(object):
 
 
     def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, c_min = 1, c_max = 20,
-                           N_samples_Mass = 30, N_samples_z = 30, N_samples_c = 30):
+                           N_samples_Mass = 30, N_samples_z = 30, N_samples_c = 30, 
+                           z_linear_sampling = False, verbose = True):
 
         M_range = np.geomspace(M_min, M_max, N_samples_Mass)
-        z_range = np.linspace(z_min, z_max, N_samples_z)
+        z_range = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
         c_range = np.linspace(c_min, c_max, N_samples_c)
-        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
-        dlnr = np.log(r[1]) - np.log(r[0])
+        r       = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
+        dlnr    = np.log(r[1]) - np.log(r[0])
 
         if not self.use_concentration: c_range = np.zeros(1)
         M_DMO_interp = np.zeros([z_range.size, M_range.size, c_range.size, r.size])
@@ -46,7 +42,7 @@ class BaryonificationClass(object):
         M_DMB_range_interp = np.geomspace(1e5, 1e18, self.N_samples)
         log_r_new_interp   = np.zeros([z_range.size, M_range.size, c_range.size, M_DMB_range_interp.size])
 
-        with tqdm(total = z_range.size, desc = 'Building Table') as pbar:
+        with tqdm(total = z_range.size * c_range.size, desc = 'Building Table', disable = not verbose) as pbar:
             for j in range(z_range.size):
                 
                 for k in range(c_range.size):
@@ -64,7 +60,7 @@ class BaryonificationClass(object):
                     for i in range(M_range.size):
                         log_r_new_interp[j, i, k, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i, k]), np.log(r))
 
-                pbar.update(1)
+                    pbar.update(1)
 
                         
 

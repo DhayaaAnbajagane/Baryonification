@@ -51,10 +51,12 @@ class HaloLightConeCatalog(object):
         else:
             self.cosmo = cosmo
 
+    @property
     def data(self):
 
         return self.cat
 
+    @property
     def cosmology(self):
 
         return self.cosmo
@@ -92,10 +94,12 @@ class HaloNDCatalog(object):
         else:
             self.cosmo = cosmo
 
+    @property
     def data(self):
 
         return self.cat
 
+    @property
     def cosmology(self):
 
         return self.cosmo
@@ -130,10 +134,12 @@ class LightconeShell(object):
         else:
             self.cosmo = cosmo
 
+    @property
     def data(self):
 
         return self.map
 
+    @property
     def cosmology(self):
 
         return self.cosmo
@@ -176,12 +182,68 @@ class GriddedMap(object):
         else:
             self.cosmo = cosmo
 
-
+    @property
     def data(self):
 
         return self.map
 
-
+    @property
     def cosmology(self):
 
         return self.cosmo
+
+
+class ParticleSnapshot(object):
+    '''
+    Class that reads in a particle snapshot (in a 2D or 3D field)
+    and stores it along with other useful quantities.
+    Used in baryonification pipeline
+    '''
+
+    def __init__(self, x = None, y = None, z = None, M = None, L = None, redshift = None, cosmo = None):
+
+        dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
+        
+        cat = np.zeros(len(x), dtype)
+
+        cat['x'] = x
+        cat['y'] = y
+        cat['z'] = 0 if z is None else z #We'll just add filler to z-column for now
+        cat['M'] = M
+
+        self.L   = L
+        self.cat = cat
+        self.redshift = redshift
+
+        self.is2D = True if z is None else False
+
+        keys = cosmo.keys()
+        if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
+                ('Omega_b' in keys) & ('n_s' in keys) & ('w0' in keys)):
+
+            raise ValueError("Not all cosmology parameters provided. I need Omega_m, sigma8, h, sigma8, Omega_b, n_s, w0")
+        else:
+            self.cosmo = cosmo
+
+
+    @property
+    def data(self):
+
+        return self.cat
+
+    @property
+    def cosmology(self):
+
+        return self.cosmo
+    
+    
+    def make_map(self, N_grid):
+
+        bins = np.linspace(0, self.L, N_grid + 1)
+
+        if np.sum(self.cat['z']) == 0:
+            Map = np.histogramdd((self.cat['x'], self.cat['y']), bins = (bins, bins), weights = self.cat['M'])[0]
+        else:
+            Map = np.histogramdd((self.cat['x'], self.cat['y'], self.cat['z']), bins = (bins, bins, bins), weights = self.cat['M'])[0]
+
+        return Map
