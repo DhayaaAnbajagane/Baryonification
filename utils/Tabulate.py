@@ -24,17 +24,18 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         super().__init__()
 
 
-    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, z_linear_sampling = False):
+    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, 
+                           z_linear_sampling = False, verbose = False):
 
-        M_range = np.geomspace(M_min, M_max, N_samples_Mass)
-        z_range = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.linspace(z_min, z_max, N_samples_z)
-        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
-        dlnr = np.log(r[1]) - np.log(r[0])
+        M_range  = np.geomspace(M_min, M_max, N_samples_Mass)
+        z_range  = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
+        r        = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
+        dlnr     = np.log(r[1]) - np.log(r[0])
 
         interp3D = np.zeros([z_range.size, M_range.size, r.size])
         interp2D = np.zeros([z_range.size, M_range.size, r.size])
         
-        with tqdm(total = z_range.size, desc = 'Building Table') as pbar:
+        with tqdm(total = z_range.size, desc = 'Building Table', disable = not verbose) as pbar:
             for j in range(z_range.size):                
                 a_j = 1/(1 + z_range[j])
 
