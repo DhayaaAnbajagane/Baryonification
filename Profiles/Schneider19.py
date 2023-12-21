@@ -65,7 +65,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     @property
     def model_params(self):
         
-        params = {k:v for k,v in vars(self).items() if k in params}
+        params = {k:v for k,v in vars(self).items() if k in model_params}
                   
         return params
 
