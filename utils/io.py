@@ -172,7 +172,7 @@ class GriddedMap(object):
             assert (self.map.shape[0] == self.map.shape[1]) & (self.map.shape[1] == self.map.shape[2]) #Maps have to be cubic maps
             self.grid = np.meshgrid(bins, bins, bins, indexing = 'xy')
             
-        self.inds_flattened = np.arange(self.grid[0].size).reshape(self.grid[0].shape)
+        self.inds = np.arange(self.grid[0].size).reshape(self.grid[0].shape)
 
         keys = cosmo.keys()
         if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
