@@ -79,6 +79,7 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
                               matter_power_spectrum = 'linear')
         cosmo.compute_sigma()
 
+        L = self.ParticleSnapshot.L
         is2D        = self.ParticleSnapshot.is2D
         tot_offsets = np.zeros([len(self.ParticleSnapshot.cat), 2 if is2D else 3])
         
@@ -92,7 +93,7 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             R_q = self.config['epsilon_max_Cutout'] * R_j/a_j #The radius for querying points, in comoving coords
-            R_q = np.clip(R_q, 0, self.ParticleSnapshot.L/2) #Can't query distances more than half box-size.
+            R_q = np.clip(R_q, 0, L/2) #Can't query distances more than half box-size.
             
             if is2D:
                 
@@ -126,9 +127,16 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
                 
             
         new_cat = self.ParticleSnapshot.cat.copy()
+        
         new_cat['x'] += tot_offsets[:, 0]
         new_cat['y'] += tot_offsets[:, 1]
+        
         if not is2D: new_cat['z'] += tot_offsets[:, 2]
+            
+        for i in ['x', 'y'] + ([] if self.ParticleSnapshot.is2D else ['z']):
+            
+            new_cat[i]  = np.where(new_cat[i] > L, new_cat[i] - L, new_cat[i])
+            new_cat[i]  = np.where(new_cat[i] < 0, new_cat[i] + L, new_cat[i])
 
         self.output(new_cat)
 
