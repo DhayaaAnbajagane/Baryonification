@@ -136,7 +136,9 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
-
+            R_q = self.config['epsilon_max_Cutout'] * R_j/a_j
+            R_q = np.clip(R_q, 0, np.max(self.GriddedMap.bins)/2) #Can't query distances more than half box-size.
+            
             if self.use_ellipticity:
                 ar_j = self.HaloNDCatalog.cat['a_ell'][j]
                 br_j = self.HaloNDCatalog.cat['b_ell'][j]
@@ -145,7 +147,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 A_j  = A_j/np.sqrt(np.sum(A_j**2))
             
             res    = self.GriddedMap.res
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / res
+            Nsize  = 2 * R_q / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
             
             if Nsize < 2:
@@ -255,7 +257,8 @@ class BaryonifyGrid(DefaultRunnerGrid):
             if mask.sum() == 0: continue
             
             mass_offsets        = np.where(mask, modded_map - orig_map_flat[inds_map_hr], 0) #Set those offsets to 0
-            mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
+#             mass_offsets        = np.clip(mass_offsets, -modded_map, np.inf) #The reduction in mass can't lead to negative total mass.
+#             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
             
             #Find which map pixels each subpixel corresponds to.
             #Get total mass offset per map pixel

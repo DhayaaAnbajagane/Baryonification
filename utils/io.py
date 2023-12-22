@@ -239,11 +239,19 @@ class ParticleSnapshot(object):
     
     def make_map(self, N_grid):
 
+        assert np.isnan(self.cat['M']).sum() == 0, "If you want to make a map, provide a value for the particle mass"
+        
         bins = np.linspace(0, self.L, N_grid + 1)
-
-        if np.sum(self.cat['z']) == 0:
-            Map = np.histogramdd((self.cat['x'], self.cat['y']), bins = (bins, bins), weights = self.cat['M'])[0]
+        
+        if self.is2D:
+            coords = np.vstack([self.cat['x'], self.cat['y']]).T
+            bins   = (bins, bins)
+            
         else:
-            Map = np.histogramdd((self.cat['x'], self.cat['y'], self.cat['z']), bins = (bins, bins, bins), weights = self.cat['M'])[0]
+            coords = np.vstack([self.cat['x'], self.cat['y'], self.cat['z']]).T
+            bins   = (bins, bins, bins)
+            
+
+        Map = np.histogramdd(coords, bins = bins, weights = self.cat['M'])[0]
 
         return Map
