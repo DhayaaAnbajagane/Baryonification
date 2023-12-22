@@ -2,6 +2,11 @@ import functools
 import time
 
 def log_time(func):
+    '''
+    Simple function that allows logging amount of time spent 
+    running code between line A and line B
+    '''
+    
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # Dictionary to store cumulative time spent on each line

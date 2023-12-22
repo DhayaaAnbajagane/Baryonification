@@ -189,7 +189,7 @@ class BaryonifyShell(DefaultRunner):
             if mask.sum() == 0: continue
             
             mass_offsets        = np.where(mask, modded_map - map_cutout.flatten(), 0) #Set those offsets to 0
-            mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
+#             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
 
             #Find which healpix pixels each subpixel corresponds to.
             #Get total mass offset per healpix pixel
