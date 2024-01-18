@@ -168,6 +168,9 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
 
         P_delta, P_0, beta, x_c = P_delta[:, None], P_0[:, None], beta[:, None], x_c[:, None]
         prof = P_delta * P_0 * (x/x_c)**gamma * (1 + (x/x_c)**alpha)**-beta
+        
+        #Convert to CGS
+        prof = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
 
         # Battaglia profile has validity limits for redshift, mass, and distance from halo center.
         # Here, we enforce the distance limit at R/R_Delta > X, where X is input by user

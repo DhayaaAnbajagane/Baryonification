@@ -202,7 +202,7 @@ class ParticleSnapshot(object):
 
     def __init__(self, x = None, y = None, z = None, M = None, L = None, redshift = None, cosmo = None):
 
-        dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
+        dtype = [('M', np.float64), ('x', np.float64), ('y', np.float64), ('z', np.float64)]
         
         cat = np.zeros(len(x), dtype)
 

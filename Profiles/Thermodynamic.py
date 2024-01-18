@@ -84,8 +84,10 @@ class Pressure(SchneiderProfiles):
         prof  = np.where(np.isfinite(prof), prof, 0) #Get rid of pesky NaN and inf values! They break CCL spline interpolator
         
         nth_frac = self._nonthermal_fraction(cosmo, r_use, M_use, a, model = self.nonthermal_model, mass_def = mass_def)
-
         prof     = prof * (1 - nth_frac) #We only want thermal pressure
+        
+        #Convert to CGS
+        prof = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:

@@ -7,7 +7,7 @@ from scipy import interpolate
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, epsilon_max = 4, use_concentration = False,
+    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-5, 200], N_samples = 500, epsilon_max = 20, use_concentration = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.DMO = DMO
@@ -36,12 +36,8 @@ class BaryonificationClass(object):
         dlnr    = np.log(r[1]) - np.log(r[0])
 
         if not self.use_concentration: c_range = np.zeros(1)
-        M_DMO_interp = np.zeros([z_range.size, M_range.size, c_range.size, r.size])
-        M_DMB_interp = np.zeros([z_range.size, M_range.size, c_range.size, r.size])
-
-        M_DMB_range_interp = np.geomspace(1e5, 1e18, self.N_samples)
-        log_r_new_interp   = np.zeros([z_range.size, M_range.size, c_range.size, M_DMB_range_interp.size])
-
+        d_interp = np.zeros([z_range.size, M_range.size, c_range.size, r.size])
+        
         with tqdm(total = z_range.size * c_range.size, desc = 'Building Table', disable = not verbose) as pbar:
             for j in range(z_range.size):
                 
@@ -54,79 +50,68 @@ class BaryonificationClass(object):
                         assert self.DMB.cdelta is None, "use_concentration = False, so set DMB model to have cdelta = None"
                     
                     #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                    M_DMO_interp[j, :, k, :] = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
-                    M_DMB_interp[j, :, k, :] = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
+                    M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
+                    M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
 
                     for i in range(M_range.size):
-                        log_r_new_interp[j, i, k, :] = np.interp(np.log(M_DMB_range_interp), np.log(M_DMB_interp[j, i, k]), np.log(r))
-
+                        ln_DMB    = np.log(M_DMB[i])
+                        ln_DMO    = np.log(M_DMO[i])
+                        diff_mask = np.ones(len(M_DMB[i]), dtype = bool)
+                        diff_mask[1:] = np.invert(np.isclose(np.diff(ln_DMB), 0, atol = 1e-10))
+                        
+                        interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
+                        interp_DMO = interpolate.CubicSpline(np.log(r), ln_DMO, extrapolate = False)
+                        
+                        d_interp[j, i, k, :] = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
+                            
                     pbar.update(1)
 
-                        
 
         if self.use_concentration:
             input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(c_range), np.log(r))
-            input_grid_2 = (np.log(1 + z_range), np.log(M_range), np.log(c_range), np.log(M_DMB_range_interp))
         else:
             input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
-            input_grid_2 = (np.log(1 + z_range), np.log(M_range), np.log(M_DMB_range_interp))
             
             #Also squeeze the output to remove the redundant axis, since we don't extend in 
             #the concentration direction anymore
-            M_DMO_interp = np.squeeze(M_DMO_interp, axis = 2)
-            M_DMB_interp = np.squeeze(M_DMB_interp, axis = 2)
-            log_r_new_interp = np.squeeze(log_r_new_interp, axis = 2)
-
+            d_interp = np.squeeze(d_interp, axis = 2)
         
-        self.interp_DMO = interpolate.RegularGridInterpolator(input_grid_1, np.log(M_DMO_interp), bounds_error = False)
-        self.interp_DMB = interpolate.RegularGridInterpolator(input_grid_2, log_r_new_interp, bounds_error = False) #Reverse needed for practical application
-        
+        self.interp_d = interpolate.RegularGridInterpolator(input_grid_1, d_interp, bounds_error = False, fill_value = np.NaN)        
 
         return 0
 
 
     def displacements(self, x, M, a, c = None):
         
-        if not (hasattr(self, 'interp_DMO') & hasattr(self, 'interp_DMB')):
-            
+        if not hasattr(self, 'interp_d'):
             raise NameError("No Table created. Run setup_interpolator() method first")
 
+#         bounds = np.all((self.R_range[0] < x) & (self.R_range[1] > x))
+#         assert bounds, "Input x has limits (%0.2e, %0.2e). Rerun setup_interpolatr() with R_range = (x_min, x_max)" % (np.min(x), np.max(x)) 
+        
         if self.use_concentration:
             assert c is not None, f"You asked for model to be built with concentration. But you set c = {c}"
             c_use = np.atleast_1d(c)
             
-        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
-        dlnr = np.log(r[1]) - np.log(r[0])
-
-        z = 1/a - 1
-
-        M_use = np.atleast_1d(M)
-        R     = self.mass_def.get_radius(self.ccl_cosmo, M_use, a)/a #in comoving Mpc
-
         offset = np.zeros_like(x)
+        R      = self.mass_def.get_radius(self.ccl_cosmo, np.atleast_1d(M), a)/a #in comoving Mpc
         inside = (x > self.R_range[0]) & (x < self.epsilon_max*R)
 
         x = x[inside]
-
-        empty = np.ones_like(x)
-        z_in  = np.log(1 + z)*empty
-        M_in  = np.log(M)*empty
-
         
+        ones   = np.ones_like(x)
+        z      = 1/a - 1
+        z_in   = np.log(1 + z)*ones
+        M_in   = np.log(M)*ones
+        
+
         if self.use_concentration:
-            c_in  = np.log(c)*empty
-            
-            one = self.interp_DMO((z_in, M_in, c_in, np.log(x), ))
-            two = self.interp_DMB((z_in, M_in, c_in, one, ))
+            c_in = np.log(c)*ones
+            offset[inside] = self.interp_d((z_in, M_in, c_in, np.log(x), ))
 
         else:
-            one = self.interp_DMO((z_in, M_in, np.log(x), ))
-            two = self.interp_DMB((z_in, M_in, one, ))
-
-        
-        offset[inside] = np.exp(two) - x
-
-        
+            offset[inside] = self.interp_d((z_in, M_in, np.log(x), ))
+            
         return offset
 
 
