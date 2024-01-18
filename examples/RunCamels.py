@@ -102,7 +102,7 @@ class StatRunner:
     def __init__(self, mapdir, config):
 
         self.outdir = mapdir
-        self.scales = np.geomspace()
+        self.scales = np.geomspace(config['min_scale'], config['max_scale'], config['n_bins'] + 1)
         self.config = config
 
         self.Nmaps = len(glob.glob(mapdir + '/rhoDM_Map*.npy'))
@@ -124,8 +124,8 @@ class StatRunner:
             Pk[o[0]]  = o[1]['Pk']
             Bk[o[0]]  = o[1]['Bk']
             WPH[o[0]] = o[1]['WPH']
-            Mom[o[0]] = 0[1]['Mom']
-            CDF[o[0]] = 0[1]['CDF']
+            Mom[o[0]] = o[1]['Mom']
+            CDF[o[0]] = o[1]['CDF']
 
 
         with h5py.File('/%s/MapStats.hdf5' % self.outdir, 'w') as f:
@@ -166,13 +166,12 @@ class StatRunner:
         Mom = [0] * self.scales.size
         CDF = [0] * self.scales.size
 
-        pixel_scale   = 25/0.6771 / len(Maps[0])
         for i in range(self.scales.size):
 
-            Smoothed_map = Map_filtered.filter(scale = self.scales[i]/pixel_scale)
+            Smoothed_map = Map_filtered.filter(scale = self.scales[i])
 
-            Mom.append(MomRunner.compute(Smoothed_map))
-            CDF.append(CDFRunner.compute(Smoothed_map))
+            Mom[i] = MomRunner.compute(Smoothed_map)
+            CDF[i] = CDFRunner.compute(Smoothed_map)
 
         Mom = np.array(Mom)
         CDF = np.array(CDF)

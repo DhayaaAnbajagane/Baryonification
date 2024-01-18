@@ -120,7 +120,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
         cosmo.compute_sigma()
 
         orig_map = self.GriddedMap.map
-        new_map  = orig_map.copy().flatten()
+        new_map  = np.zeros(orig_map.size, dtype = np.float64)
         bins     = self.GriddedMap.bins
 
         orig_map_flat = orig_map.flatten()
@@ -256,9 +256,13 @@ class BaryonifyGrid(DefaultRunnerGrid):
             
             if mask.sum() == 0: continue
             
-            mass_offsets        = np.where(mask, modded_map - orig_map_flat[inds_map_hr], 0) #Set those offsets to 0
-#             mass_offsets        = np.clip(mass_offsets, -modded_map, np.inf) #The reduction in mass can't lead to negative total mass.
-#             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
+            mass_offsets = np.where(mask, modded_map - orig_map_flat[inds_map_hr], 0) #Set those offsets to 0
+            mask_safe    = (np.abs(mass_offsets) > np.std(mass_offsets) / 30) #Small offsets are going to be set to 0
+            
+            if mask_safe.sum() == 0: continue
+
+            mass_offsets[mask_safe] -= np.mean(mass_offsets[mask_safe]) #Enforce mass conservation so total mass is zero 
+            mass_offsets[~mask_safe] = 0
             
             #Find which map pixels each subpixel corresponds to.
             #Get total mass offset per map pixel
@@ -357,6 +361,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
 
                     Rmat = self.build_Rmat(A_j, np.array([1, 0]))
                     x_grid_hr_ell, y_grid_hr_ell = (self.coord_array(x_grid_hr, y_grid_hr) @ Rmat).T
+                    r_grid_hr = np.sqrt(x_grid_hr_ell**2/ar_j**2 + y_grid_hr_ell**2/br_j**2).reshape(x_grid_hr_ell.shape)
             
             else:
                 
@@ -394,8 +399,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
                                         z_grid_hr_ell**2/cr_j**2).reshape(x_grid_hr_ell.shape)
 
         
-            integral_element = res**2 if self.GriddedMap.is2D else res**3
-            Painting = profile(cosmo, r_grid_hr.flatten()/a_j, M_j, a_j) * integral_element
+            Painting = profile(cosmo, r_grid_hr.flatten()/a_j, M_j, a_j)
             
             mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
             mask = mask & (r_grid_hr.flatten()/a_j < R_j*self.config['epsilon_max_Offset'])

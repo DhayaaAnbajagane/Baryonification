@@ -11,6 +11,8 @@ model_params = ['cdelta', 'epsilon', 'a', 'n',
                 'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
                 'q', 'p']
 
+CUTOFF = 100
+
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     def __init__(self,
@@ -157,7 +159,8 @@ class DarkMatter(SchneiderProfiles):
         rho_c = M_use/Normalization
         rho_c = rho_c[:, None]
 
-        prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2
+        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2) #Extra exponential cutoff (needed to handle two-halo term cutoff)
+        prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2 * kfac
         
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -202,8 +205,9 @@ class TwoHalo(SchneiderProfiles):
         bias_M  = bias_M[:, None]
         prof    = (1 + bias_M * xi_mm)*ccl.rho_x(cosmo, a, species = 'matter', is_comoving = True)
 
-        #Need this zeroing out to do projection in fourier space
-        prof[:, (r_use > 50)] = 0
+        #Need this truncation so the fourier space integral isnt infinity
+        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        prof = prof * kfac
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -256,7 +260,8 @@ class Stars(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
-        prof = f_cga*M_tot / (4*np.pi**(3/2)*R_h) * 1/r_use**2 * np.exp(-(r_use/2/R_h)**2)
+        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        prof = f_cga*M_tot / (4*np.pi**(3/2)*R_h) * 1/r_use**2 * np.exp(-(r_use/2/R_h)**2) * kfac
                 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -312,11 +317,10 @@ class Gas(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
-        prof  = 1/(1 + u)**beta / (1 + v**self.gamma)**((self.delta - beta)/self.gamma)
+        kfac  = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        prof  = 1/(1 + u)**beta / (1 + v**self.gamma)**((self.delta - beta)/self.gamma) * kfac
         prof *= f_gas*M_tot/Normalization
         
-
-#         prof[r_use > 50*R[:, None]] = 0
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -411,7 +415,9 @@ class CollisionlessMatter(SchneiderProfiles):
         log_der  = ln_M_clm.derivative(nu = 1)(np.log(r_use))
         lin_der  = log_der * np.exp(ln_M_clm(np.log(r_use))) / r_use
         prof     = 1/(4*np.pi*r_use**2) * lin_der
-        prof = np.where(np.isnan(prof), 0, prof)
+        
+        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        prof = np.where(np.isnan(prof), 0, prof) * kfac
 
 #         prof[(r_use[None, :] < r_integral[0]) | (r_use > 50*R[:, None]) | (r_use[None, :] > r_integral[-1])] = 0
 
