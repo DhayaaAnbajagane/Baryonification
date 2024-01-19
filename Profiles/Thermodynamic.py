@@ -34,6 +34,10 @@ Pressure_at_infinity = 0
 
 
 class Pressure(SchneiderProfiles):
+    """
+    Computes the pressure of the GAS.
+    Need to use additional factors to get the electron pressure.
+    """
     
     def __init__(self, nonthermal_model = None, **kwargs):
         
@@ -125,6 +129,15 @@ class Pressure(SchneiderProfiles):
 
         return nth
 
+
+class ElectronPressure(Pressure):
+    
+    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        prof = Pth_to_Pe * super()._real(cosmo, r, M, a, mass_def)
+        
+        return prof
+    
 
 class GasNumberDensity(SchneiderProfiles):
     
@@ -267,6 +280,8 @@ class ThermalSZ(object):
     
     
     def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        #Don't raise ValueError because then we can't pass this object in a TabulatedProfile class
     
         return np.zeros_like(r)
     
