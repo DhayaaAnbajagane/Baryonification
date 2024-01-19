@@ -131,7 +131,7 @@ class Baryonification2D(BaryonificationClass):
     def get_masses(self, model, r, M, a, mass_def):
 
         dlnr  = np.log(r[1]/r[0])
-        Sigma = model.projected(self.ccl_cosmo, r, M, a, mass_def = mass_def) * a #scale fac. needed because ccl projection done in comoving, not physical, units
+        Sigma = model.projected(self.ccl_cosmo, r, M, a, mass_def = mass_def) * a #scale fac. cause proj. was done in comoving not phys.
         M     = np.cumsum(2*np.pi*r**2 * Sigma * dlnr, axis = -1)
 
         return M
