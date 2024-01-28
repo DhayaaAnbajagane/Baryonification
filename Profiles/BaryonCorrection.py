@@ -49,7 +49,6 @@ class BaryonificationClass(object):
                         assert self.DMO.cdelta is None, "use_concentration = False, so set DMO model to have cdelta = None"
                         assert self.DMB.cdelta is None, "use_concentration = False, so set DMB model to have cdelta = None"
                     
-                    #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
                     M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
                     M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
 
@@ -57,7 +56,8 @@ class BaryonificationClass(object):
                         ln_DMB    = np.log(M_DMB[i])
                         ln_DMO    = np.log(M_DMO[i])
                         diff_mask = np.ones(len(M_DMB[i]), dtype = bool)
-                        diff_mask[1:] = np.invert(np.isclose(np.diff(ln_DMB), 0, atol = 1e-10))
+                        diff_mask[0]  = True #Always drop the last point
+                        diff_mask[1:] = np.diff(ln_DMB) > 0 #Integrated mass must always be increasing
                         
                         interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
                         interp_DMO = interpolate.CubicSpline(np.log(r), ln_DMO, extrapolate = False)
@@ -121,6 +121,7 @@ class Baryonification3D(BaryonificationClass):
 
         dlnr = np.log(r[1]/r[0])
         rho  = model.real(self.ccl_cosmo, r, M, a, mass_def = mass_def)
+        rho  = np.where(rho < 0, 0, rho) #Enforce non-zero densities
         M    = np.cumsum(4*np.pi*r**3 * rho * dlnr, axis = -1)
 
         return M
@@ -132,6 +133,7 @@ class Baryonification2D(BaryonificationClass):
 
         dlnr  = np.log(r[1]/r[0])
         Sigma = model.projected(self.ccl_cosmo, r, M, a, mass_def = mass_def) * a #scale fac. cause proj. was done in comoving not phys.
+        Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
         M     = np.cumsum(2*np.pi*r**2 * Sigma * dlnr, axis = -1)
 
         return M

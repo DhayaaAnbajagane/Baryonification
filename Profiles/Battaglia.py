@@ -185,7 +185,17 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         
         return prof
     
-class BattagliaGas(ccl.halos.profiles.HaloProfile):
+    
+class BattagliaElectronPressure(BattagliaPressure):
+    
+    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        prof = Pth_to_Pe * super()._real(cosmo, r, M, a, mass_def)
+        
+        return prof
+    
+    
+class BattagliaGasDensity(ccl.halos.profiles.HaloProfile):
 
     '''
     Class that implements a Battaglia profile using the

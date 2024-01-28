@@ -24,6 +24,20 @@ class ConvolvedProfile(object):
         self.fft_par = Profile.precision_fftlog
         
         self.isHarmonic = Pixel.isHarmonic
+        
+        
+    def __getattr__(self, name):
+        """
+        Delegate attribute and method access 
+        to the Profile object passesd to the class,
+        but only if attr/method is not already found in the class.
+        """
+        
+        try:
+            return super().__getattribute__(name)
+        
+        except AttributeError:
+            return getattr(self.Profile, name)
     
     
     def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):

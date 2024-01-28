@@ -60,8 +60,8 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         self.precision_fftlog['padding_lo_fftlog'] = 1e-2
         self.precision_fftlog['padding_hi_fftlog'] = 1e2
 
-        self.precision_fftlog['padding_lo_extra'] = 1e-2
-        self.precision_fftlog['padding_hi_extra'] = 1e2
+        self.precision_fftlog['padding_lo_extra'] = 1e-4
+        self.precision_fftlog['padding_hi_extra'] = 1e4
         
     
     @property
