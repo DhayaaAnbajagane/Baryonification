@@ -23,8 +23,9 @@ class DefaultRunner(object):
 
         self.HaloLightConeCatalog  = HaloLightConeCatalog
         self.LightconeShell        = LightconeShell
-        self.cosmo = HaloLightConeCatalog.cosmology
-        self.model = model
+        self.cosmo  = HaloLightConeCatalog.cosmology
+        self.M_part = LightconeShell.M_part
+        self.model  = model
         
         
         self.mass_def = mass_def
@@ -133,33 +134,31 @@ class BaryonifyShell(DefaultRunner):
                 A_j  = A_j/np.sqrt(np.sum(A_j**2))
             
             
-            
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
-            
-            if Nsize < 2:
-                continue
+            if Nsize < 2: continue #Skip halo if its small. Displacement will just be zero.
 
-            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
-
+            #We don't need to account for halo location within pixel because projector call
+            #used below will get map around EXACT location of halo
+            x = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
             x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
-
             r_grid = np.sqrt(x_grid**2 + y_grid**2)
 
             x_hat = x_grid/r_grid
             y_hat = y_grid/r_grid
 
-            GnomProjector     = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
+            GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
 
-            map_cutout = GnomProjector.projmap(orig_map, #map1,
-                                               lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
-                                               rot=(ra_j, dec_j))
+            map_cutout    = GnomProjector.projmap(orig_map,
+                                                  lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
+                                                  rot=(ra_j, dec_j))
 
             #Need this because map value doesn't account for pixel
-            #size changes when reprojecting. It only resamples the map
+            #size changes when reprojecting. It only resamples the map.
+            #This assumes the map being input is a MASS map not a DENSITY map.
             map_cutout *= self.config['pixel_scale_factor']**2
 
             p_ind      = GnomProjector.projmap(healpix_inds,
@@ -171,7 +170,7 @@ class BaryonifyShell(DefaultRunner):
 
             #If ellipticity exists, then account for it
             if self.use_ellipticity:
-                assert ar_j*br_j > 0, "The axis ratio in halo %d is zero" % j
+                assert np.logical_and(ar_j > 0, br_j > 0), "The axis ratio in halo %d is zero" % j
 
                 Rmat   = self.build_Rmat(A_j, np.array([1, 0]))
                 x_grid_ell, y_grid_ell = (self.coord_array(x_grid, y_grid) @ Rmat).T
@@ -183,13 +182,25 @@ class BaryonifyShell(DefaultRunner):
             
             in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
             modded_map = interp_map(in_coords)
-
-            mask       = np.isfinite(modded_map) #Find which part of map cannot be modified due to out-of-bounds errors
             
+            #Find which part of map cannot be modified due to out-of-bounds errors
+            #Skip if no pixels are usable
+            mask       = np.isfinite(modded_map) 
             if mask.sum() == 0: continue
             
-            mass_offsets        = np.where(mask, modded_map - map_cutout.flatten(), 0) #Set those offsets to 0
-#             mass_offsets[mask] -= np.mean(mass_offsets[mask]) #Enforce mass conservation by making sure total mass moving around is 0
+            #Ensure that the offsets are 0 where we have no proper model prediction
+            #Then any mass offsets smaller than particle mass in the simulation is ignored.
+            #This makes the map method match the particle method to percent-level accuracy.
+            mass_offsets = np.where(mask, modded_map - orig_map_flat[inds], 0) #Set those offsets to 0
+            mask_safe    = np.logical_and(np.abs(mass_offsets) > self.M_part, orig_map_flat[inds] > 0)
+            if mask_safe.sum() == 0: continue
+
+               
+            #Enforce mass conservation so total mass is zero. Only do this to pixels where
+            #the offset is sufficiently large. This is to prevent large, visually apparent DC modes
+            mass_offsets[mask_safe] -= np.mean(mass_offsets[mask_safe])
+            mass_offsets[~mask_safe] = 0
+            
 
             #Find which healpix pixels each subpixel corresponds to.
             #Get total mass offset per healpix pixel
@@ -253,9 +264,7 @@ class PaintProfilesShell(DefaultRunner):
 
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
-            
-            if Nsize < 2:
-                continue
+            Nsize  = np.clip(Nsize, 2, np.inf) #Don't skip small halos and sum all contributions within pixel
 
             x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
 

@@ -4,7 +4,6 @@ import healpy as hp
 import pyccl as ccl
 
 
-
 class HaloLightConeCatalog(object):
     '''
     Class that reads in a halo catalog (in a lightcone)
@@ -12,7 +11,7 @@ class HaloLightConeCatalog(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, ra = None, dec = None, M = None, z = None, c = None, path = None, cosmo = None):
+    def __init__(self, ra = None, dec = None, M = None, z = None, path = None, cosmo = None, **arrays):
 
         if (path is None) & ((ra is None) | (dec is None) | (M is None) |(z is None)):
 
@@ -31,15 +30,17 @@ class HaloLightConeCatalog(object):
               isinstance(z, np.ndarray)  & isinstance(M, np.ndarray)):
 
             dtype = [('M', '>f'), ('z', '>f'), ('ra', '>f'), ('dec', '>f')]
-            if c is not None: dtype += [('c', '>f')]
+            dtype = dtype + [(name, '>f') for name, arr in arrays.items()]
                 
+            N   = 1 if not isinstance(ra, (list, np.ndarray, tuple)) else len(ra)
             cat = np.zeros(len(ra), dtype)
 
             cat['ra']  = ra
             cat['dec'] = dec
             cat['z']   = z
             cat['M']   = M
-            if c is not None: cat['c'] = c
+            
+            for name, arr in arrays.items(): cat[name] = arr
 
         self.cat   = cat
 
@@ -61,6 +62,17 @@ class HaloLightConeCatalog(object):
 
         return self.cosmo
     
+    
+    def __getitem__(self, key):
+        
+        ra  = self.cat['ra'][key]
+        dec = self.cat['dec'][key]
+        z   = self.cat['z'][key]
+        M   = self.cat['M'][key]
+        c   = self.cat['c'][key] if 'c' in self.cat.dtype.names else None
+                    
+        return HaloLightConeCatalog(ra, dec, M, z, c, cosmo = self.cosmo)
+    
 
 class HaloNDCatalog(object):
     '''
@@ -69,19 +81,21 @@ class HaloNDCatalog(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, x = None, y = None, z = None, M = None, c = None, redshift = None, cosmo = None):
+    def __init__(self, x = None, y = None, z = None, M = None, redshift = None, cosmo = None, **arrays):
 
         dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
-        if c is not None: dtype += [('c', '>f')]
+        dtype = dtype + [(name, '>f') for name, arr in arrays.items()]
         
         
-        cat = np.zeros(len(x), dtype)
+        N = 1 if not isinstance(x, (list, np.ndarray, tuple)) else len(x)
+        cat = np.zeros(N, dtype)
 
         cat['x'] = x
         cat['y'] = y
         cat['z'] = 0 if z is None else z #We'll just add filler to z-column for now
         cat['M'] = M
-        if c is not None: cat['c'] = c
+        
+        for name, arr in arrays.items(): cat[name] = arr
 
         self.cat = cat
         self.redshift = redshift
@@ -103,6 +117,33 @@ class HaloNDCatalog(object):
     def cosmology(self):
 
         return self.cosmo
+    
+    
+    def __getitem__(self, key):
+        
+        x = self.cat['x'][key]
+        y = self.cat['y'][key]
+        z = self.cat['z'][key]
+        M = self.cat['M'][key]
+        c = self.cat['c'][key] if 'c' in self.cat.dtype.names else None
+        
+        return HaloNDCatalog(x, y, z, M, c, self.redshift, self.cosmo)
+    
+    
+    def __str__(self):
+        
+        string = f"""
+        HaloNDCatalog with {self.cat.size} Halos at z = {self.redshift}.
+        Minimum Mass = {self.cat['M'].min()}
+        Maximum Mass = {self.cat['M'].max()}
+        Cosmology set to {self.cosmo}.
+        """
+        return string.strip()
+    
+
+    def __repr__(self):
+        
+        return f"HaloNDCatalog(cat = {self.cat!r}, \nredshift = {self.redshift!r}, \ncosmo = {self.cosmo})"
 
 
 class LightconeShell(object):
@@ -113,7 +154,7 @@ class LightconeShell(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, map = None, path = None, cosmo = None):
+    def __init__(self, map = None, path = None, cosmo = None, M_part = None):
 
         if (path is None) & (map is None):
             raise ValueError("Need to provide either path to map, or provide map values in healpix ring configuration")
@@ -124,8 +165,11 @@ class LightconeShell(object):
         elif isinstance(map, np.ndarray):
             self.map = map
 
-        self.NSIDE = hp.npix2nside(self.map.size)
+            
+        self.NSIDE  = hp.npix2nside(self.map.size)
+        self.M_part = M_part
 
+        
         keys = cosmo.keys()
         if not (('Omega_m' in keys) & ('sigma8' in keys) & ('h' in keys) &
                 ('Omega_b' in keys) & ('n_s' in keys) & ('w0' in keys)):
@@ -153,7 +197,7 @@ class GriddedMap(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, map = None, redshift = None, bins = None, cosmo = None):
+    def __init__(self, map = None, redshift = None, bins = None, cosmo = None, M_part = None):
         '''
         bins: Must be coordinates of map along a given axis, in physical Mpc
         '''
@@ -162,6 +206,7 @@ class GriddedMap(object):
         self.Npix     = self.map.shape[0]
         self.res      = bins[1] - bins[0]
         self.bins     = bins
+        self.M_part   = M_part
         
         self.is2D = True if len(self.map.shape) == 2 else False
 
