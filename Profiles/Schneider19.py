@@ -1,6 +1,7 @@
 
 import numpy as np
 import pyccl as ccl
+from operator import add, mul, sub, truediv, pow, neg, pos, abs
 
 from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
@@ -118,6 +119,46 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         assert np.all(proj_prof >= 0), "Something went wrong. Profile is negative in some places"
 
         return proj_prof
+    
+    
+    def __str_par__(self):
+        
+        string = f"("
+        for m in model_params:
+            string += f"{m} = {self.__dict__[m]}, "
+        string += f"xi_mm = {self.xi_mm}, R_range = {self.R_range})"
+        return string
+        
+    def __str_prf__(self):
+        
+        string = f"{self.__class__.__name__}"
+        return string
+        
+    
+    def __str__(self):
+        
+        string = self.__str_prf__() + self.__str_par__()
+        return string 
+    
+    
+    def __repr__(self):
+        
+        return self.__str__()
+    
+    
+    
+    from ..utils.misc import generate_operator_method
+    
+    #Add routines for doing simple arithmetic operations with the classes
+    __add__     = generate_operator_method(add)
+    __mul__     = generate_operator_method(mul)
+    __sub__     = generate_operator_method(sub)
+    __pow__     = generate_operator_method(pow)
+    __truediv__ = generate_operator_method(truediv)
+    
+    __abs__     = generate_operator_method(abs)
+    __pos__     = generate_operator_method(pos)
+    __neg__     = generate_operator_method(neg)    
 
 
 
