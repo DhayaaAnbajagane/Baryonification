@@ -84,7 +84,7 @@ class HaloNDCatalog(object):
     def __init__(self, x = None, y = None, z = None, M = None, redshift = None, cosmo = None, **arrays):
 
         dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
-        dtype = dtype + [(name, '>f') for name, arr in arrays.items()]
+        dtype = dtype + [(name, '>f', arr.shape[1:] if len(arr.shape) > 1 else '') for name, arr in arrays.items()]
         
         
         N = 1 if not isinstance(x, (list, np.ndarray, tuple)) else len(x)
@@ -125,9 +125,13 @@ class HaloNDCatalog(object):
         y = self.cat['y'][key]
         z = self.cat['z'][key]
         M = self.cat['M'][key]
-        c = self.cat['c'][key] if 'c' in self.cat.dtype.names else None
         
-        return HaloNDCatalog(x, y, z, M, c, self.redshift, self.cosmo)
+        other = {}
+        for key in self.cat.dtype.names:
+            if key not in ['x', 'y', 'z', 'M']:
+                other[key] = self.cat[key]
+        
+        return HaloNDCatalog(x, y, z, M, c, self.redshift, self.cosmo, **other)
     
     
     def __str__(self):
@@ -197,7 +201,7 @@ class GriddedMap(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, map = None, redshift = None, bins = None, cosmo = None, M_part = None):
+    def __init__(self, map = None, redshift = None, bins = None, cosmo = None):
         '''
         bins: Must be coordinates of map along a given axis, in physical Mpc
         '''
@@ -206,7 +210,6 @@ class GriddedMap(object):
         self.Npix     = self.map.shape[0]
         self.res      = bins[1] - bins[0]
         self.bins     = bins
-        self.M_part   = M_part
         
         self.is2D = True if len(self.map.shape) == 2 else False
 

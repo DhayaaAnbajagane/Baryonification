@@ -4,11 +4,81 @@ import pyccl as ccl
 
 from scipy import interpolate
 from tqdm import tqdm
+from numba import njit
 
 MY_FILL_VAL = np.NaN
 
 from ..utils.debug import log_time
 
+
+@njit
+def regrid_pixels_2D(grid, pix_positions, pix_values):
+
+    for pix_pos, pix_value in zip(pix_positions, pix_values):
+
+        N = grid.shape[0]
+        x_start, y_start = pix_pos
+        x_end, y_end     = x_start + 1, y_start + 1
+
+        for i in range(N):
+            for j in range(N):
+
+                #Find intersection length
+                dx = min(j + 1, x_end) - max(j, x_start)
+                dy = min(i + 1, y_end) - max(i, y_start)
+
+                #Now account for periodic boundary conditions
+                if dx < 0: dx = min(j + 1, x_end + N) - max(j, x_start + N)
+                if dx < 0: dx = min(j + 1, x_end - N) - max(j, x_start - N)
+
+                if dy < 0: dy = min(i + 1, y_end + N) - max(i, y_start + N)
+                if dy < 0: dy = min(i + 1, y_end - N) - max(i, y_start - N)
+
+                #If there is some intersection, then add
+                if (dx > 0) & (dy > 0):
+                    overlap_area = dx * dy
+                    grid[i, j] += overlap_area * pix_value
+
+
+@njit
+def regrid_pixels_3D(grid, pix_positions, pix_values):
+
+    for pix_pos, pix_value in zip(pix_positions, pix_values):
+
+        N = grid.shape[0]
+        x_start, y_start, z_start = pix_pos
+        x_end, y_end, z_end       = x_start + 1, y_start + 1, z_start + 1
+
+        for i in range(N):
+            for j in range(N):
+                for k in range(N):
+
+                    #Find intersection length
+                    dx = min(j + 1, x_end) - max(j, x_start)
+                    dy = min(i + 1, y_end) - max(i, y_start)
+                    dz = min(k + 1, z_end) - max(k, z_start)
+
+                    #Now account for periodic boundary conditions
+                    if dx < 0: dx = min(j + 1, x_end + N) - max(j, x_start + N)
+                    if dx < 0: dx = min(j + 1, x_end - N) - max(j, x_start - N)
+
+                    if dy < 0: dy = min(i + 1, y_end + N) - max(i, y_start + N)
+                    if dy < 0: dy = min(i + 1, y_end - N) - max(i, y_start - N)
+                        
+                    if dz < 0: dz = min(k + 1, z_end + N) - max(k, z_start + N)
+                    if dz < 0: dz = min(k + 1, z_end - N) - max(k, z_start - N)
+
+                    #If there is some intersection, then add
+                    if (dx > 0) & (dy > 0) & (dz > 0):
+                        overlap_vol = dx * dy * dz
+                        grid[i, j, k] += overlap_vol * pix_value
+                    
+
+#Quickly run the function once so it compiles and initializes
+regrid_pixels_2D(np.zeros([5, 5]),    np.ones([2, 2]), np.ones(2))
+regrid_pixels_3D(np.zeros([5, 5, 5]), np.ones([2, 3]), np.ones(2))
+
+                        
 class DefaultRunnerGrid(object):
     '''
     A class that contains relevant utils for input/output
@@ -19,7 +89,6 @@ class DefaultRunnerGrid(object):
 
         self.HaloNDCatalog = HaloNDCatalog
         self.GriddedMap    = GriddedMap
-        self.M_part        = GriddedMap.M_part
         self.cosmo = HaloNDCatalog.cosmology
         self.model = model
         
@@ -30,6 +99,15 @@ class DefaultRunnerGrid(object):
         self.config   = self.set_config(config)
 
         self.use_ellipticity = use_ellipticity
+        
+        #Assert that all the required quantities are in the input catalog
+        if use_ellipticity:
+            
+            names = HaloNDCatalog.cat.dtype.names
+            
+            assert 'q_ell' in names, "The 'q_ell' column is missing, but you set use_ellipticity = True"
+            if not GriddedMap.is2D: assert 'c_ell' in names, "The 'c_ell' column is missing, but you set use_ellipticity = True"
+            assert 'A_ell' in names, "The 'A_ell' column is missing, but you set use_ellipticity = True"
 
 
     def set_config(self, config):
@@ -67,18 +145,34 @@ class DefaultRunnerGrid(object):
             
             if self.verbose: print("OutPath is not string. Map is not saved to disk")
 
-    def build_Rmat(self, A, ref):
+    def build_Rmat(self, A, q):
 
-        A   /= np.linalg.norm(A)
-        ref /= np.linalg.norm(ref)
+        A /= np.linalg.norm(A)
 
         if len(A) == 1:
             raise  ValueError("Can't rotate a 1-dimensional vector")
         
         elif len(A) == 2:
-            ang  = np.arccos(np.dot(A, ref))
-            Rmat = np.array([[np.cos(ang), -np.sin(ang)], 
-                             [np.sin(ang), np.cos(ang)]])
+            
+            #The 2D rotation is done using routines implemented in the galsim Shear class
+            
+            ref  = np.array([1., 0.])
+            beta = np.arccos(np.dot(A, ref))
+            eta  = -np.log(q) 
+            
+            if eta > 1e-4:
+                eta2g = np.tanh(0.5*eta)/eta
+            else:
+                etasq = eta * eta
+                eta2g = 0.5 + etasq*((-1/24) + etasq*(1/240))
+
+            g   = eta2g * eta * np.exp(2j * beta)
+            g1  = g.real
+            g2  = g.imag
+
+            det  = np.sqrt(1 - np.abs(g)**2)
+            Rmat = np.array([[1 + g1, g2],
+                             [g2, 1 - g1]]) / det
         
         elif len(A) == 3:
             
@@ -102,6 +196,8 @@ class DefaultRunnerGrid(object):
     
 class BaryonifyGrid(DefaultRunnerGrid):
 
+    
+    
     def pick_indices(self, center, width, Npix):
         
         inds = np.arange(center - width, center + width)
@@ -120,10 +216,11 @@ class BaryonifyGrid(DefaultRunnerGrid):
         cosmo.compute_sigma()
 
         orig_map = self.GriddedMap.map
-        new_map  = np.zeros(orig_map.size, dtype = np.float64)
+        new_map  = np.zeros(orig_map.shape, dtype = np.float64)
         bins     = self.GriddedMap.bins
 
         orig_map_flat = orig_map.flatten()
+        pix_offsets   = np.zeros([orig_map_flat.size, len(orig_map.shape)])
 
         for j in tqdm(range(self.HaloNDCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
 
@@ -140,11 +237,9 @@ class BaryonifyGrid(DefaultRunnerGrid):
             R_q = np.clip(R_q, 0, np.max(self.GriddedMap.bins)/2) #Can't query distances more than half box-size.
             
             if self.use_ellipticity:
-                ar_j = self.HaloNDCatalog.cat['a_ell'][j]
-                br_j = self.HaloNDCatalog.cat['b_ell'][j]
-                cr_j = self.HaloNDCatalog.cat['c_ell'][j]
-                A_j  = self.HaloNDCatalog.cat['A'][j]
-                A_j  = A_j/np.sqrt(np.sum(A_j**2))
+                q_j = self.HaloNDCatalog.cat['q_ell'][j]
+                A_j = self.HaloNDCatalog.cat['A_ell'][j]
+                A_j = A_j/np.sqrt(np.sum(A_j**2))
             
             res    = self.GriddedMap.res
             Nsize  = 2 * R_q / res
@@ -170,9 +265,6 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 
                 assert np.logical_and(dx <= res, dy <= res), "Halo offsets (%0.2f, %0.2f) are larger than res (%0.2f)" % (dx, dy, res)
                 
-                map_cutout = self.GriddedMap.map[x_inds, :][:, y_inds]
-                interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
-
                 x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
                 r_grid = np.sqrt( (x_grid + dx)**2 +  (y_grid + dy)**2 )
 
@@ -181,15 +273,16 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
                 #If ellipticity exists, then account for it
                 if self.use_ellipticity:
-                    assert ar_j*br_j > 0, "The axis ratio in halo %d is zero" % j
+                    assert q_j > 0, "The axis ratio in halo %d is not positive" % j
 
-                    Rmat = self.build_Rmat(A_j, np.array([1, 0]))
+                    Rmat = self.build_Rmat(A_j, q_j)
                     x_grid_ell, y_grid_ell = (self.coord_array(x_grid + dx, y_grid + dy) @ Rmat).T
-                    r_grid = np.sqrt(x_grid_ell**2/ar_j**2 + y_grid_ell**2/br_j**2).reshape(x_grid_ell.shape)
+                    r_grid = np.sqrt(x_grid_ell**2 + y_grid_ell**2).reshape(x_grid_ell.shape)
 
-                #Compute the displacement needed
-                offset     = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j).reshape(r_grid.shape) * a_j
-                in_coords  = self.coord_array(x_grid + offset*x_hat, y_grid + offset*y_hat)
+                #Compute the displacement needed and add it to pixel offsets
+                offset = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
+                pix_offsets[inds, 0] += offset * x_hat.flatten()
+                pix_offsets[inds, 1] += offset * y_hat.flatten()
                 
             
             else:
@@ -208,10 +301,6 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 dy = bins[y_cen] - y_j
                 dz = bins[z_cen] - z_j
                 
-                map_cutout = self.GriddedMap.map[x_inds, ...][:, y_inds, :][..., z_inds]
-                map_cutout = np.swapaxes(map_cutout, 0, 1)
-                interp_map = interpolate.RegularGridInterpolator((x, x, x), map_cutout, bounds_error = False, fill_value = MY_FILL_VAL)
-
                 x_grid, y_grid, z_grid = np.meshgrid(x, x, x, indexing = 'xy')
                 r_grid = np.sqrt( (x_grid + dx)**2 +  (y_grid + dy)**2 +  (z_grid + dz)**2 )
 
@@ -221,9 +310,9 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 
                 #If ellipticity exists, then account for it
                 if self.use_ellipticity:
-                    assert ar_j*br_j > 0, "The axis ratio in halo %d is zero" % j
+                    assert q_j > 0, "The axis ratio in halo %d is zero" % j
 
-                    Rmat = self.build_Rmat(A_j, np.array([1, 0, 0]))
+                    Rmat = self.build_Rmat(A_j, np.array([0., 1., 0.]))
                     x_grid_ell, y_grid_ell, z_grid_ell = (self.coord_array(x_grid + dx, y_grid + dy, z_grid + dz) @ Rmat).T
                     r_grid = np.sqrt(x_grid_ell**2/ar_j**2 + 
                                      y_grid_ell**2/br_j**2 +
@@ -231,38 +320,44 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
                 
                 #Compute the displacement needed    
-                offset     = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j).reshape(r_grid.shape) * a_j
-                in_coords  = self.coord_array(x_grid + offset*x_hat, 
-                                              y_grid + offset*y_hat, 
-                                              z_grid + offset*z_hat)
+                offset = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
+                pix_offsets[inds, 0] += offset * x_hat.flatten()
+                pix_offsets[inds, 1] += offset * y_hat.flatten()
+                pix_offsets[inds, 2] += offset * z_hat.flatten()
             
             
-            
-            modded_map = interp_map(in_coords)
-            
-            #Find which part of map cannot be modified due to out-of-bounds errors
-            #Skip if no pixels are usable
-            mask       = np.isfinite(modded_map) 
-            if mask.sum() == 0: continue
-            
-            #Ensure that the offsets are 0 where we have no proper model prediction
-            #Then any mass offsets smaller than particle mass in the simulation is ignored.
-            #This makes the map method match the particle method to percent-level accuracy.
-            mass_offsets = np.where(mask, modded_map - orig_map_flat[inds], 0) #Set those offsets to 0
-            mask_safe    = np.logical_and(np.abs(mass_offsets) > self.M_part, orig_map_flat[inds] > 0)
-            if mask_safe.sum() == 0: continue
-
-               
-            #Enforce mass conservation so total mass is zero. Only do this to pixels where
-            #the offset is sufficiently large. This is to prevent large, visually apparent DC modes
-            mass_offsets[mask_safe] -= np.mean(mass_offsets[mask_safe])
-            mass_offsets[~mask_safe] = 0
-            
-            #Add the offsets to the new map at the right indices
-            new_map[inds] += mass_offsets
-            
-        new_map = new_map.reshape(orig_map.shape)
+        #Now that pixels have all been offset, let's regrid the map
+        N = orig_map.shape[0]
+        x = np.arange(N)
         
+         #Need to split  2D vs 3D since we have separate numba functions for each
+        if self.GriddedMap.is2D:
+            x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
+        
+            pix_offsets = np.where(np.isfinite(pix_offsets), pix_offsets, 0)
+            pix_offsets[:, 0] += x_grid.flatten()
+            pix_offsets[:, 1] += y_grid.flatten()
+            
+            #Add pixels to the array. Calculations happen in-place
+            regrid_pixels_2D(new_map, pix_offsets, orig_map_flat)
+            
+        else:
+            x_grid, y_grid, z_grid = np.meshgrid(x, x, x, indexing = 'xy')
+        
+            pix_offsets = np.where(np.isfinite(pix_offsets), pix_offsets, 0)
+            pix_offsets[:, 0] += x_grid.flatten()
+            pix_offsets[:, 1] += y_grid.flatten()
+            pix_offsets[:, 2] += z_grid.flatten()
+            
+            #Add pixels to the array. Calculations happen in-place
+            regrid_pixels_3D(new_map, pix_offsets, orig_map_flat)
+            
+            
+        #Do a quick check that the sum is the same
+        new_sum = np.sum(new_map)
+        old_sum = np.sum(orig_map_flat)
+        assert np.isclose(new_sum, old_sum), "ERROR in pixel regridding, sum(new_map) [%0.2e] != sum(oldmap) [%0.2e]" % (new_sum, old_sum)
+            
         self.output(new_map)
 
         return new_map
@@ -280,8 +375,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
         return inds
     
     
-    @log_time
-    def process(self, log_line_time):
+    def process(self):
 
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
                               Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
@@ -307,60 +401,76 @@ class PaintProfilesGrid(DefaultRunnerGrid):
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
 
             if self.use_ellipticity:
-                ar_j = self.HaloNDCatalog.cat['a_ell'][j]
-                br_j = self.HaloNDCatalog.cat['b_ell'][j]
-                cr_j = self.HaloNDCatalog.cat['c_ell'][j]
-                A_j  = self.HaloNDCatalog.cat['A'][j]
-                A_j  = A_j/np.sqrt(np.sum(A_j**2))
+                q_j = self.HaloNDCatalog.cat['q_ell'][j]
+                A_j = self.HaloNDCatalog.cat['A_ell'][j]
+                A_j = A_j/np.sqrt(np.sum(A_j**2))
             
             res    = self.GriddedMap.res
             Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
-            Nsize  = np.clip(Nsize, 2, np.inf) #Can't skip small halos because we still must sum all contributions to a pixel
+            Nsize  = np.clip(Nsize, 2, bins.size//2) #Can't skip small halos because we still must sum all contributions to a pixel
 
             x = np.linspace(-Nsize/2, Nsize/2, Nsize) * res
             cutout_width = Nsize//2
 
             if self.GriddedMap.is2D:
                 
-                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), cutout_width, self.GriddedMap.Npix)
-                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), cutout_width, self.GriddedMap.Npix)
+                x_cen  = np.argmin(np.abs(bins - x_j))
+                y_cen  = np.argmin(np.abs(bins - y_j))
+                x_inds = self.pick_indices(x_cen, cutout_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(y_cen, cutout_width, self.GriddedMap.Npix)
+                inds   = self.GriddedMap.inds[x_inds, :][:, y_inds].flatten()
                 
-                inds = self.GriddedMap.inds[x_inds, :][:, y_inds].flatten()
+                #Get offsets between halo position and pixel center
+                dx = bins[x_cen] - x_j
+                dy = bins[y_cen] - y_j
+                
+                assert np.logical_and(dx <= res, dy <= res), "Halo offsets (%0.2f, %0.2f) are larger than res (%0.2f)" % (dx, dy, res)
                 
                 profile = self.model.projected
 
                 x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
-                r_grid = np.sqrt(x_grid**2 + y_grid**2)
+                r_grid = np.sqrt( (x_grid + dx)**2 +  (y_grid + dy)**2 )
 
                 #If ellipticity exists, then account for it
                 if self.use_ellipticity:
-                    assert ar_j*br_j > 0, "The axis ratio in halo %d is zero" % j
+                    assert q_j > 0, "The axis ratio in halo %d is zero" % j
 
-                    Rmat = self.build_Rmat(A_j, np.array([1, 0]))
-                    x_grid_ell, y_grid_ell = (self.coord_array(x_grid, y_grid) @ Rmat).T
-                    r_grid = np.sqrt(x_grid_ell**2/ar_j**2 + y_grid_ell**2/br_j**2).reshape(x_grid_ell.shape)
+                    Rmat = self.build_Rmat(A_j, q_j)
+                    x_grid_ell, y_grid_ell = (self.coord_array(x_grid + dx, y_grid + dy) @ Rmat).T
+                    r_grid = np.sqrt(x_grid_ell**2 + y_grid_ell**2).reshape(x_grid_ell.shape)
             
             else:
                 
                 shape  = (Nsize, Nsize, Nsize)
-                x_inds = self.pick_indices(np.argmin(np.abs(bins - x_j)), cutout_width, self.GriddedMap.Npix)
-                y_inds = self.pick_indices(np.argmin(np.abs(bins - y_j)), cutout_width, self.GriddedMap.Npix)
-                z_inds = self.pick_indices(np.argmin(np.abs(bins - z_j)), cutout_width, self.GriddedMap.Npix)
+                x_cen  = np.argmin(np.abs(bins - x_j))
+                y_cen  = np.argmin(np.abs(bins - y_j))
+                z_cen  = np.argmin(np.abs(bins - z_j))
+                x_inds = self.pick_indices(x_cen, cutout_width, self.GriddedMap.Npix)
+                y_inds = self.pick_indices(y_cen, cutout_width, self.GriddedMap.Npix)
+                z_inds = self.pick_indices(z_cen, cutout_width, self.GriddedMap.Npix)
+                inds   = self.GriddedMap.inds[x_inds, ...][:, y_inds, :][..., z_inds].flatten()
                 
-                inds = self.GriddedMap.inds[x_inds, ...][:, y_inds, :][..., z_inds].flatten()
+                #Get offsets between halo position and pixel center
+                dx = bins[x_cen] - x_j
+                dy = bins[y_cen] - y_j
+                dz = bins[z_cen] - z_j
                 
                 profile = self.model.real
 
                 x_grid, y_grid, z_grid = np.meshgrid(x, x, x, indexing = 'xy')
-                r_grid = np.sqrt(x_grid**2 + y_grid**2 + z_grid**2)
+                r_grid = np.sqrt( (x_grid + dx)**2 +  (y_grid + dy)**2 +  (z_grid + dz)**2 )
+                
 
                 #If ellipticity exists, then account for it
                 if self.use_ellipticity:
-                    assert ar_j*br_j > 0, "The axis ratio in halo %d is zero" % j
+                    
+                    raise ValueError("use_ellipticity is not implemented for 3D maps")
+                    
+                    assert q_j > 0, "The axis ratio in halo %d is zero" % j
 
-                    Rmat = self.build_Rmat(A_j, np.array([1, 0, 0]))
-                    x_grid_ell, y_grid_ell, z_grid_ell = (self.coord_array(x_grid, y_grid, z_grid) @ Rmat).T
+                    Rmat = self.build_Rmat(A_j, np.array([0., 1., 0.]))
+                    x_grid_ell, y_grid_ell, z_grid_ell = (self.coord_array(x_grid + dx, y_grid + dy, z_grid + dz) @ Rmat).T
                     r_grid = np.sqrt(x_grid_ell**2/ar_j**2 + 
                                      y_grid_ell**2/br_j**2 +
                                      z_grid_ell**2/cr_j**2).reshape(x_grid_ell.shape)
@@ -505,3 +615,6 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
         self.output(new_map)
 
         return new_map
+    
+    
+    
