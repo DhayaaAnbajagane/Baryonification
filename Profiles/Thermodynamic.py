@@ -22,6 +22,11 @@ m_e     = 9.10938e-31 / Msun_to_Kg
 m_p     = 1.67262e-27 / Msun_to_Kg
 c       = 2.99792458e8 / Mpc_to_m
 
+sigma_T_cgs = 6.652458e-29 / m_to_cm**2
+m_e_cgs     = 9.10938e-31 * 1e3
+m_p_cgs     = 1.67262e-27 * 1e3
+c_cgs       = 2.99792458e8 * m_to_cm
+
 #Thermodynamic/abundance quantities
 Y         = 0.24 #Helium mass ratio
 Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
@@ -39,13 +44,20 @@ class Pressure(SchneiderProfiles):
     Need to use additional factors to get the electron pressure.
     """
     
-    def __init__(self, nonthermal_model = None, **kwargs):
+    def __init__(self, gas = None, darkmatterbaryon = None, nonthermal_model = None, **kwargs):
         
+        self.Gas = gas
+        self.DarkMatterBaryon = darkmatterbaryon
+        
+        #The subtraction in DMB case is so we only have the 1halo term
+        if self.Gas is None: self.Gas = Gas(**kwargs)
+        if self.DarkMatterBaryon is None: self.DarkMatterBaryon = DarkMatterBaryon(**kwargs) - TwoHalo(**kwargs)
+            
         self.nonthermal_model = nonthermal_model
         super().__init__(**kwargs)
+        
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        
         
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
@@ -56,17 +68,8 @@ class Pressure(SchneiderProfiles):
 
         r_integral = np.geomspace(1e-3, 100, 500) #Hardcoded ranges
 
-        Total_prof = DarkMatterBaryon(**self.model_params, xi_mm = self.xi_mm)
-        Gas_prof   = Gas(**self.model_params)
-        
-
-        rho_total  = Total_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
-        rho_gas    = Gas_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
-        
-        #Remove two halo term from total matter profile. 
-        #Only the halo (one halo term) is in equilibrium in our model
-        TwoHalo_prof = TwoHalo(p = self.p, q = self.q, xi_mm = self.xi_mm)
-        rho_total   -= TwoHalo_prof.real(cosmo, r_integral, M, a, mass_def = mass_def)
+        rho_total  = self.DarkMatterBaryon.real(cosmo, r_integral, M, a, mass_def = mass_def)
+        rho_gas    = self.Gas.real(cosmo, r_integral, M, a, mass_def = mass_def)
         
         dlnr    = np.log(r_integral[1]) - np.log(r_integral[0])
         M_total = 4 * np.pi * np.cumsum(r_integral**3 * rho_total * dlnr, axis = -1)
@@ -102,6 +105,7 @@ class Pressure(SchneiderProfiles):
         assert np.all(prof >= 0), "Something went wrong. Pressure is negative in some places"
 
         return prof
+    
 
     def _nonthermal_fraction(self, cosmo, r, M, a, model = 'Green20', mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -130,6 +134,7 @@ class Pressure(SchneiderProfiles):
         return nth
 
 
+
 class ElectronPressure(Pressure):
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -137,11 +142,15 @@ class ElectronPressure(Pressure):
         prof = Pth_to_Pe * super()._real(cosmo, r, M, a, mass_def)
         
         return prof
-    
 
+
+    
 class GasNumberDensity(SchneiderProfiles):
     
-    def __init__(self, mean_molecular_weight = 1.15, **kwargs):
+    def __init__(self, gas = None, mean_molecular_weight = 1.15, **kwargs):
+        
+        self.Gas = gas
+        if self.Gas is None: self.Gas = Gas(**kwargs)
         
         self.mean_molecular_weight = mean_molecular_weight
         super().__init__(**kwargs)
@@ -157,7 +166,7 @@ class GasNumberDensity(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        rho  = Gas(**self.model_params)
+        rho  = self.Gas = Gas(**self.model_params)
         rho  = rho.real(cosmo, r_use, M, a, mass_def = mass_def)
         prof = rho / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
         
@@ -167,49 +176,20 @@ class GasNumberDensity(SchneiderProfiles):
         if np.ndim(M) == 0:
             prof = np.squeeze(prof, axis=0)
 
-        assert np.all(prof >= 0), "Something went wrong. Temperature is negative in some places"
-
         return prof
-
-
-class Temperature(Pressure):
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        
-        
-        r_use = np.atleast_1d(r)
-        M_use = np.atleast_1d(M)
-
-        z = 1/a - 1
-
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
-        P   = Pressure(nonthermal_model = self.nonthermal_model, **self.model_params, xi_mm = self.xi_mm)
-        n   = GasNumberDensity(**self.model_params)
-
-        P   = P.real(cosmo, r_use, M, a, mass_def = mass_def)
-        n   = n.real(cosmo, r_use, M, a, mass_def = mass_def)
-        
-        prof = P/(n * kb_in_ev)
-        
-        #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
-
-        assert np.all(prof >= 0), "Something went wrong. Temperature is negative in some places"
-
-        return prof
-
-
-class CustomTemperature(ccl.halos.profiles.HaloProfile):
     
-    def __init__(self, Pressure, GasNumberDensity):
+class Temperature(SchneiderProfiles):
+    
+    def __init__(self, pressure = None, gasnumberdensity = None, **kwargs):
         
-        self.Pressure = Pressure
-        self.GasNumberDensity = GasNumberDensity
-        super().__init__()
+        self.Pressure = pressure
+        self.GasNumberDensity = gasnumberdensity
+        
+        if self.Pressure is None: self.Pressure = Pressure(**kwargs)
+        if self.GasNumberDensity is None: self.GasNumberDensity = GasNumberDensity(**kwargs)
+            
+        super().__init__(**kwargs)
         
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -222,11 +202,8 @@ class CustomTemperature(ccl.halos.profiles.HaloProfile):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        P   = self.Pressure(nonthermal_model = self.nonthermal_model, **self.model_params)
-        n   = self.GasNumberDensity(**self.model_params)
-
-        P   = P.real(cosmo, r_use, M, a, mass_def = mass_def)
-        n   = n.real(cosmo, r_use, M, a, mass_def = mass_def)
+        P   = self.Pressure.real(cosmo, r_use, M, a, mass_def = mass_def)
+        n   = self.GasNumberDensity.real(cosmo, r_use, M, a, mass_def = mass_def)
         
         prof = P/(n * kb_in_ev)
         
@@ -241,14 +218,14 @@ class CustomTemperature(ccl.halos.profiles.HaloProfile):
         return prof
     
     
-#Base class to generate SZ profiles
+
 class ThermalSZ(object):
     
     
-    def __init__(self, Pressure, epsilon_max = 3):
+    def __init__(self, Pressure = None):
         
-        self.Pressure    = Pressure
-        self.epsilon_max = epsilon_max
+        self.Pressure = Pressure
+        if self.Pressure is None: self.Pressure = Pressure(**kwargs)
         
     
     def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -265,10 +242,8 @@ class ThermalSZ(object):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        prof = sigma_T/(m_e*c**2) * a * self.Pressure.projected(cosmo, r_use, M_use, a, mass_def)
+        prof = sigma_T_cgs/(m_e_cgs*c_cgs**2) * a * self.Pressure.projected(cosmo, r_use, M_use, a, mass_def)
         prof = prof*self.Pgas_to_Pe(cosmo, r_use, M_use, a, mass_def)
-        
-        prof[r_use > R[:, None]*self.epsilon_max] = 0
         
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -282,19 +257,22 @@ class ThermalSZ(object):
     def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
         #Don't raise ValueError because then we can't pass this object in a TabulatedProfile class
+        #Instead just output sentinel value of -99
     
-        return np.zeros_like(r)
+        return np.ones_like(r) * -99
     
     
     
 class XrayLuminosity(ccl.halos.profiles.HaloProfile):
     
     
-    def __init__(self, Temperature, GasNumberDensity):
+    def __init__(self, temperature = None, gasnumberdensity = None):
         
-        self.Temperature      = Temperature
-        self.GasNumberDensity = GasNumberDensity
-        self.epsilon_max      = epsilon_max
+        self.Temperature      = temperature
+        self.GasNumberDensity = gasnumberdensity
+        
+        if self.Temperature is None: self.Temperature = Temperature(**kwargs)
+        if self.GasNumberDensity is None: self.GasNumberDensity = GasNumberDensity(**kwargs)
         
         super().__init__()
         

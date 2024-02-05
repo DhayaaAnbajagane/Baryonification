@@ -2,6 +2,7 @@
 import numpy as np
 import pyccl as ccl
 from operator import add, mul, sub, truediv, pow, neg, pos, abs
+import warnings
 
 from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
@@ -12,7 +13,11 @@ model_params = ['cdelta', 'epsilon', 'a', 'n',
                 'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
                 'q', 'p']
 
-CUTOFF = 100
+
+#All profiles are exponentially suppressed after R = CUTOFF*R200c.
+#This is just to prevent infinite density issues
+CUTOFF = 30
+
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
@@ -210,8 +215,6 @@ class DarkMatter(SchneiderProfiles):
             prof = np.squeeze(prof, axis=0)
 
 
-#         assert np.all(prof >= 0), "Something went wrong. Profile is negative in some places"
-
         return prof
 
 
@@ -241,8 +244,6 @@ class TwoHalo(SchneiderProfiles):
         nu_M    = delta_c / ccl.sigmaM(cosmo, M_use, a)
         bias_M  = 1 + (self.q*nu_M**2 - 1)/delta_c + 2*self.p/delta_c/(1 + (self.q*nu_M**2)**self.p)
 
-        #Schneider uses (bias * corr + 1), but this includes the background mean matter density
-        #so we instead use just (bias * corr)
         bias_M  = bias_M[:, None]
         prof    = (1 + bias_M * xi_mm)*ccl.rho_x(cosmo, a, species = 'matter', is_comoving = True)
 
@@ -255,9 +256,6 @@ class TwoHalo(SchneiderProfiles):
             prof = np.squeeze(prof, axis=-1)
         if np.ndim(M) == 0:
             prof = np.squeeze(prof, axis=0)
-
-        #print(prof)
-        #assert np.all(prof >= 0), "Something went wrong. TwoHalo profile is negative in some places"
 
         return prof
 
@@ -310,8 +308,6 @@ class Stars(SchneiderProfiles):
         if np.ndim(M) == 0:
             prof = np.squeeze(prof, axis=0)
 
-#         assert np.all(prof >= 0), "Something went wrong. Profile is negative in some places"
-
         return prof
 
 
@@ -329,7 +325,6 @@ class Gas(SchneiderProfiles):
 
         u = r_use/(self.theta_co*R)[:, None]
         v = r_use/(self.theta_ej*R)[:, None]
-        # w = r_use/(50*R)[:, None] #We hardcode 50*R200c as a choice for radial cutoff of profile
 
         f_star = self.A * ((M_use/self.M1)**self.beta + (M_use/self.M1)**self.eta)**-1
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
@@ -340,8 +335,7 @@ class Gas(SchneiderProfiles):
         f_gas, beta = f_gas[:, None], beta[:, None]
 
         #Integrate over wider region in radii to get normalization of gas profile
-
-        r_integral = np.geomspace(1e-6, 100, 500)
+        r_integral = np.geomspace(1e-5, 100, 500)
 
         u_integral = r_integral/(self.theta_co*R)[:, None]
         v_integral = r_integral/(self.theta_ej*R)[:, None]
@@ -370,20 +364,76 @@ class Gas(SchneiderProfiles):
             prof = np.squeeze(prof, axis=0)
 
 
-#         assert np.all(prof >= 0), "Something went wrong. Profile is negative in some places"
-
         return prof
-
-
-class CollisionlessMatter(SchneiderProfiles):
+    
+    
+class ShockedGas(SchneiderProfiles):
+    '''
+    Implements shocked gas profile, assuming a Rankine-Hugonoit conditions.
+    To simplify, we assume a high mach-number shock, and so the 
+    density is suppressed by a factor of 4.
+    '''
+    
+    def __init__(self, epsilon_shock, width_shock, **kwargs):
+        
+        self.epsilon_shock = epsilon_shock
+        self.width_shock   = width_shock
 
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
-        r_integral = np.geomspace(1e-5, 200, 500)
+        z = 1/a - 1
 
+        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+
+        rho_gas = super()._real(cosmo, r, M, a, mass_def)
+        factor  = (1 - 0.25)/(1 + np.exp(1/self.width_shock*(r_use - R))) + 0.25   
+        
+        #Get the right size for rho_gas
+        if M_use.size == 1:
+            rho_gas = rho_gas[None, :]
+            
+        prof = rho_gas * factor
+        
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0:
+            prof = np.squeeze(prof, axis=0)
+        
+        return prof
+
+
+class CollisionlessMatter(SchneiderProfiles):
+    
+    def __init__(self, gas = None, stars = None, darkmatter = None, max_iter = 10, reltol = 1e-2,**kwargs):
+        
+        self.Gas   = gas
+        self.Stars = stars
+        self.DarkMatter = darkmatter
+        
+        if self.Gas is None: self.Gas = Gas(**kwargs)          
+        if self.Stars is None: self.Stars = Stars(**kwargs)
+        if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
+            
+        self.max_iter   = max_iter
+        self.reltol     = reltol
+        super().__init__(**kwargs)
+        
+
+    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+
+        #Def radius sampling for doing iteration.
+        #And don't check iteration near the boundaries, since we can have numerical errors
+        #due to the finite width oof the profile during iteration.
+        r_integral = np.geomspace(1e-5, 100, 500)
+        safe_range = (r_integral > 2 * np.min(r_integral) ) & (r_integral < 2 * np.max(r_integral) )
+        
         z = 1/a - 1
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
@@ -399,13 +449,9 @@ class CollisionlessMatter(SchneiderProfiles):
         f_clm  = 1 - cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m + f_sga
         
         
-        NFW_DMO    = DarkMatter(**self.model_params)
-        Stars_prof = Stars(**self.model_params)
-        Gas_prof   = Gas(**self.model_params)
-
-        rho_i      = NFW_DMO.real(cosmo, r_integral, M, a, mass_def)
-        rho_cga    = Stars_prof.real(cosmo, r_integral, M, a, mass_def)
-        rho_gas    = Gas_prof.real(cosmo, r_integral, M, a, mass_def)
+        rho_i      = self.DarkMatter.real(cosmo, r_integral, M, a, mass_def)
+        rho_cga    = self.Stars.real(cosmo, r_integral, M, a, mass_def)
+        rho_gas    = self.Gas.real(cosmo, r_integral, M, a, mass_def)
 
         #The ccl profile class removes the dimension of size 1
         #we're adding it back in here in order to keep code general
@@ -429,18 +475,21 @@ class CollisionlessMatter(SchneiderProfiles):
 
         for m_i in range(M_i.shape[0]):
             
-            counter = 0
-            diff = np.inf #Initializing variable at infinity
+            counter  = 0
+            max_rel_diff = np.inf #Initializing variable at infinity
             
-            while np.any(np.abs(diff)) > 1e-2:
+            while max_rel_diff > self.reltol:
 
                 r_f  = r_integral*relaxation_fraction[m_i]
                 M_f  = f_clm[m_i]*M_i[m_i] + np.exp(ln_M_cga[m_i](np.log(r_f))) + np.exp(ln_M_gas[m_i](np.log(r_f)))
 
                 relaxation_fraction_new = self.a*((M_i[m_i]/M_f)**self.n - 1) + 1
 
-                diff = relaxation_fraction_new/relaxation_fraction[m_i] - 1
-
+                diff     = relaxation_fraction_new/relaxation_fraction[m_i] - 1
+                abs_diff = np.abs(diff)
+                
+                max_rel_diff = np.max(abs_diff[safe_range])
+                
                 relaxation_fraction[m_i] = relaxation_fraction_new
 
                 counter += 1
@@ -448,7 +497,15 @@ class CollisionlessMatter(SchneiderProfiles):
                 #Though we do a while loop, we break it off after 10 tries
                 #this seems to work well enough. The loop converges
                 #after two or three iterations.
-                if counter >= 10: break
+                if (counter >= self.max_iter) & (max_rel_diff > self.reltol): 
+                    
+                    med_rel_diff = np.max(abs_diff[safe_range])
+                    warn_text = ("Profile of halo index %d did not converge after %d tries." % (m_i, counter) +
+                                 "Max_diff = %0.5f, Median_diff = %0.5f. Try increasing max_iter." % (max_rel_diff, med_rel_diff)
+                                )
+                    
+                    warnings.warn(warn_text, UserWarning)
+                    break
 
         ln_M_clm = np.vstack([np.log(f_clm[m_i]) + 
                               ln_M_NFW[m_i](np.log(r_integral/relaxation_fraction[m_i])) for m_i in range(M_i.shape[0])])
@@ -460,21 +517,27 @@ class CollisionlessMatter(SchneiderProfiles):
         kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
         prof = np.where(np.isnan(prof), 0, prof) * kfac
 
-#         prof[(r_use[None, :] < r_integral[0]) | (r_use > 50*R[:, None]) | (r_use[None, :] > r_integral[-1])] = 0
-
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
             prof = np.squeeze(prof, axis=-1)
         if np.ndim(M) == 0:
             prof = np.squeeze(prof, axis=0)
 
-#         assert np.all(prof >= 0), "Something went wrong. Profile is negative in some places"
-
         return prof
 
 
 class DarkMatterOnly(SchneiderProfiles):
 
+    def __init__(self, darkmatter = None, twohalo = None, **kwargs):
+        
+        self.DarkMatter = darkmatter
+        self.TwoHalo    = twohalo
+        
+        if self.TwoHalo is None: self.TwoHalo = TwoHalo(**kwargs)
+        if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
+            
+        super().__init__(**kwargs)
+        
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         r_use = np.atleast_1d(r)
@@ -484,17 +547,31 @@ class DarkMatterOnly(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        DarkMatter_prof = DarkMatter(**self.model_params)
-        TwoHalo_prof    = TwoHalo(**self.model_params, xi_mm = self.xi_mm)
-
-        prof = (DarkMatter_prof.real(cosmo, r, M, a, mass_def) +
-                TwoHalo_prof.real(cosmo, r, M, a, mass_def))
+        prof = (self.DarkMatter.real(cosmo, r, M, a, mass_def) +
+                self.TwoHalo.real(cosmo, r, M, a, mass_def)
+               )
 
         return prof
 
 
 class DarkMatterBaryon(SchneiderProfiles):
 
+    def __init__(self, gas = None, stars = None, collisionlessmatter = None, darkmatter = None, twohalo = None, **kwargs):
+        
+        self.Gas   = gas
+        self.Stars = stars
+        self.TwoHalo    = twohalo
+        self.DarkMatter = darkmatter
+        self.CollisionlessMatter = collisionlessmatter
+        
+        if self.Gas is None: self.Gas = Gas(**kwargs)          
+        if self.Stars is None: self.Stars = Stars(**kwargs)
+        if self.TwoHalo is None: self.TwoHalo = TwoHalo(**kwargs)
+        if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
+        if self.CollisionlessMatter is None: self.CollisionlessMatter = CollisionlessMatter(**kwargs)
+            
+        super().__init__(**kwargs)
+        
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         r_use = np.atleast_1d(r)
@@ -504,23 +581,17 @@ class DarkMatterBaryon(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        Collisionless_prof = CollisionlessMatter(**self.model_params)
-        Stars_prof         = Stars(**self.model_params)
-        Gas_prof           = Gas(**self.model_params)
-        TwoHalo_prof       = TwoHalo(**self.model_params, xi_mm = self.xi_mm)
-
-
         #Need DMO for normalization
         #Makes sure that M_DMO(<r) = M_DMB(<r) for the limit r --> infinity
         #This is just for the onehalo term
-        r_integral = np.geomspace(1e-3, 100, 500)
+        r_integral = np.geomspace(1e-5, 100, 500)
 
-        rho   = DarkMatter(**self.model_params).real(cosmo, r_integral, M, a, mass_def)
+        rho   = self.DarkMatter.real(cosmo, r_integral, M, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral)
 
-        rho   = (Collisionless_prof.real(cosmo, r_integral, M, a, mass_def) +
-                 Stars_prof.real(cosmo, r_integral, M, a, mass_def) +
-                 Gas_prof.real(cosmo, r_integral, M, a, mass_def))
+        rho   = (self.CollisionlessMatter.real(cosmo, r_integral, M, a, mass_def) +
+                 self.Stars.real(cosmo, r_integral, M, a, mass_def) +
+                 self.Gas.real(cosmo, r_integral, M, a, mass_def))
 
         M_tot_dmb = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
 
@@ -529,9 +600,9 @@ class DarkMatterBaryon(SchneiderProfiles):
         if np.ndim(Factor) == 1:
             Factor = Factor[:, None]
 
-        prof = (Collisionless_prof.real(cosmo, r, M, a, mass_def) * Factor +
-                Stars_prof.real(cosmo, r, M, a, mass_def) * Factor +
-                Gas_prof.real(cosmo, r, M, a, mass_def) * Factor +
-                TwoHalo_prof.real(cosmo, r, M, a, mass_def))
+        prof = (self.CollisionlessMatter.real(cosmo, r, M, a, mass_def) * Factor +
+                self.Stars.real(cosmo, r, M, a, mass_def) * Factor +
+                self.Gas.real(cosmo, r, M, a, mass_def) * Factor +
+                self.TwoHalo.real(cosmo, r, M, a, mass_def))
 
         return prof
