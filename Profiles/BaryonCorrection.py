@@ -55,14 +55,21 @@ class BaryonificationClass(object):
                     for i in range(M_range.size):
                         ln_DMB    = np.log(M_DMB[i])
                         ln_DMO    = np.log(M_DMO[i])
+                        
+                        #Require mass to always increase w/ radius
+                        #And remove pts of DMO = DMB, improves large-scale convergence
                         diff_mask = np.ones(len(M_DMB[i]), dtype = bool)
-                        diff_mask[0]  = True #Always drop the last point
-                        diff_mask[1:] = np.diff(ln_DMB) > 0 #Integrated mass must always be increasing
-                        
+                        diff_mask[0]  = True #Always keep the first point
+                        diff_mask[1:] = (np.diff(ln_DMB) > 1e-10) & (np.diff(ln_DMO) > 1e-10) 
+                        diff_mask     = diff_mask & (np.abs(ln_DMB - ln_DMO) > 1e-6) 
+                                                
                         interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
-                        interp_DMO = interpolate.CubicSpline(np.log(r), ln_DMO, extrapolate = False)
+                        interp_DMO = interpolate.CubicSpline(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
                         
-                        d_interp[j, i, k, :] = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
+                        offset = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
+                        offset = np.where(np.isfinite(offset), offset, 0)
+                        
+                        d_interp[j, i, k, :] = offset
                             
                     pbar.update(1)
 
@@ -118,11 +125,18 @@ class BaryonificationClass(object):
 class Baryonification3D(BaryonificationClass):
 
     def get_masses(self, model, r, M, a, mass_def):
-
-        dlnr = np.log(r[1]/r[0])
-        rho  = model.real(self.ccl_cosmo, r, M, a, mass_def = mass_def)
+        
+        #Make sure the min/max does not mess up the integral
+        #Adding some 20% buffer just in case
+        r_min = np.min([np.min(r), 1e-5])
+        r_max = np.max([np.max(r), 100])
+        r_int = np.geomspace(r_min/1.2, r_max*1.2, 500)
+        
+        dlnr = np.log(r_int[1]/r_int[0])
+        rho  = model.real(self.ccl_cosmo, r_int, M, a, mass_def = mass_def)
         rho  = np.where(rho < 0, 0, rho) #Enforce non-zero densities
-        M    = np.cumsum(4*np.pi*r**3 * rho * dlnr, axis = -1)
+        M    = np.cumsum(4*np.pi*r_int**3 * rho * dlnr, axis = -1)
+        M    = np.exp(interpolate.CubicSpline(np.log(r_int), np.log(M), axis = -1, extrapolate = False)(np.log(r)))
 
         return M
 
@@ -130,10 +144,19 @@ class Baryonification3D(BaryonificationClass):
 class Baryonification2D(BaryonificationClass):
 
     def get_masses(self, model, r, M, a, mass_def):
-
-        dlnr  = np.log(r[1]/r[0])
-        Sigma = model.projected(self.ccl_cosmo, r, M, a, mass_def = mass_def) * a #scale fac. cause proj. was done in comoving not phys.
+        
+        #Make sure the min/max does not mess up the integral
+        #Adding some 20% buffer just in case
+        r_min = np.min([np.min(r), 1e-5])
+        r_max = np.max([np.max(r), 100])
+        r_int = np.geomspace(r_min/1.5, r_max*1.5, 500)
+        
+        #The scale fac. is used in Sigma cause the projection in ccl is
+        #done in comoving coords not physical coords
+        dlnr  = np.log(r_int[1]/r_int[0])
+        Sigma = model.projected(self.ccl_cosmo, r_int, M, a, mass_def = mass_def) * a 
         Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
-        M     = np.cumsum(2*np.pi*r**2 * Sigma * dlnr, axis = -1)
+        M     = np.cumsum(2*np.pi*r_int**2 * Sigma * dlnr, axis = -1)
+        M     = np.exp(interpolate.CubicSpline(np.log(r_int), np.log(M), axis = -1, extrapolate = False)(np.log(r)))
 
         return M
