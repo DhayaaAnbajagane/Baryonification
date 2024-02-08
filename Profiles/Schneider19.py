@@ -11,12 +11,12 @@ from astropy import units as u
 model_params = ['cdelta', 'epsilon', 'a', 'n', 
                 'theta_ej', 'theta_co', 'M_c', 'mu', 'gamma', 'delta',
                 'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
-                'q', 'p']
+                'q', 'p', 'cutoff']
 
 
 #All profiles are exponentially suppressed after R = CUTOFF*R200c.
 #This is just to prevent infinite density issues
-CUTOFF = 30
+CUTOFF = 10
 
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
@@ -26,7 +26,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
                  epsilon = None, a = None, n = None,
                  theta_ej = None, theta_co = None, M_c = None, mu = None, gamma = None, delta = None,
                  A = None, M1 = None, eta = None, eta_delta = None, beta = None, beta_delta = None, epsilon_h = None,
-                 q = None, p = None, xi_mm = None, R_range = [1e-10, 1e10]):
+                 q = None, p = None, cutoff = None, xi_mm = None, R_range = [1e-10, 1e10], use_fftlog_projection = False):
 
 
         self.epsilon    = epsilon
@@ -57,6 +57,17 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
         #Sets the range that we compute profiles too (if we need to do any numerical stuff)
         self.R_range = R_range
+        
+        #Sets the cutoff scale of all profiles, in comoving Mpc
+        #This should be the box side length
+        self.cutoff  = cutoff
+        
+        
+        #This allows user to force usage of the default FFTlog projection, if needed.
+        #Otherwise, we use the realspace integration, since that allows for specification
+        #of a hard boundary on radius
+        if not use_fftlog_projection:
+            self._projected = self._projected_realspace
 
         #Constant that helps with the fourier transform convolution integral.
         #This value minimized the ringing due to the transforms
@@ -76,8 +87,8 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         params = {k:v for k,v in vars(self).items() if k in model_params}
                   
         return params
-
-
+        
+        
     def _projected_realspace(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         '''
         Custom method for projection where we do it all in real-space. Not that slow and
@@ -95,6 +106,10 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         int_min = self.precision_fftlog['padding_lo_fftlog']*np.min(r_use)
         int_max = self.precision_fftlog['padding_hi_fftlog']*np.max(r_use)
         int_N   = self.precision_fftlog['n_per_decade'] * np.int32(np.log10(int_max/int_min))
+        
+        #If cutoff was passed, then rewrite the integral max limit
+        if self.cutoff is not None:
+            int_max = self.cutoff
 
         r_integral = np.geomspace(int_min, int_max, int_N)
 
@@ -205,7 +220,7 @@ class DarkMatter(SchneiderProfiles):
         rho_c = M_use/Normalization
         rho_c = rho_c[:, None]
 
-        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2) #Extra exponential cutoff (needed to handle two-halo term cutoff)
+        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2) #Extra exponential cutoff
         prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2 * kfac
         
         #Handle dimensions so input dimensions are mirrored in the output
@@ -248,7 +263,7 @@ class TwoHalo(SchneiderProfiles):
         prof    = (1 + bias_M * xi_mm)*ccl.rho_x(cosmo, a, species = 'matter', is_comoving = True)
 
         #Need this truncation so the fourier space integral isnt infinity
-        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
         prof = prof * kfac
 
         #Handle dimensions so input dimensions are mirrored in the output
@@ -299,7 +314,7 @@ class Stars(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
-        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
         prof = f_cga*M_tot / (4*np.pi**(3/2)*R_h) * 1/r_use**2 * np.exp(-(r_use/2/R_h)**2) * kfac
                 
         #Handle dimensions so input dimensions are mirrored in the output
@@ -352,7 +367,7 @@ class Gas(SchneiderProfiles):
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
-        kfac  = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
         prof  = 1/(1 + u)**beta / (1 + v**self.gamma)**((self.delta - beta)/self.gamma) * kfac
         prof *= f_gas*M_tot/Normalization
         
@@ -367,7 +382,7 @@ class Gas(SchneiderProfiles):
         return prof
     
     
-class ShockedGas(SchneiderProfiles):
+class ShockedGas(Gas):
     '''
     Implements shocked gas profile, assuming a Rankine-Hugonoit conditions.
     To simplify, we assume a high mach-number shock, and so the 
@@ -378,6 +393,8 @@ class ShockedGas(SchneiderProfiles):
         
         self.epsilon_shock = epsilon_shock
         self.width_shock   = width_shock
+        
+        super().__init__(**kwargs)
 
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -388,12 +405,14 @@ class ShockedGas(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
+        #Minimum is 0.25 since a factor of 4x drop is the maximum possible for a shock
         rho_gas = super()._real(cosmo, r, M, a, mass_def)
-        factor  = (1 - 0.25)/(1 + np.exp(1/self.width_shock*(r_use - R))) + 0.25   
+        g_arg   = 1/self.width_shock*(np.log(r_use) - np.log(self.epsilon_shock*R)[:, None])
+        g_arg   = np.where(g_arg > 1e2, np.inf, g_arg) #To prevent overflows when doing exp
+        factor  = (1 - 0.25)/(1 + np.exp(g_arg)) + 0.25
         
         #Get the right size for rho_gas
-        if M_use.size == 1:
-            rho_gas = rho_gas[None, :]
+        if M_use.size == 1: rho_gas = rho_gas[None, :]
             
         prof = rho_gas * factor
         
@@ -420,6 +439,7 @@ class CollisionlessMatter(SchneiderProfiles):
             
         self.max_iter   = max_iter
         self.reltol     = reltol
+        
         super().__init__(**kwargs)
         
 
@@ -431,8 +451,8 @@ class CollisionlessMatter(SchneiderProfiles):
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
         #due to the finite width oof the profile during iteration.
-        r_integral = np.geomspace(1e-5, 100, 500)
-        safe_range = (r_integral > 2 * np.min(r_integral) ) & (r_integral < 2 * np.max(r_integral) )
+        r_integral = np.geomspace(1e-5, 300, 500)
+        safe_range = (r_integral > 2 * np.min(r_integral) ) & (r_integral < 1/2 * np.max(r_integral) )
         
         z = 1/a - 1
 
@@ -514,7 +534,7 @@ class CollisionlessMatter(SchneiderProfiles):
         lin_der  = log_der * np.exp(ln_M_clm(np.log(r_use))) / r_use
         prof     = 1/(4*np.pi*r_use**2) * lin_der
         
-        kfac = np.exp( - (r_use[None, :]/CUTOFF/R[:, None])**2)
+        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
         prof = np.where(np.isnan(prof), 0, prof) * kfac
 
         #Handle dimensions so input dimensions are mirrored in the output
