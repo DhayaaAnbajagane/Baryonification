@@ -7,7 +7,7 @@ from scipy import interpolate
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-5, 200], N_samples = 500, epsilon_max = 20, use_concentration = False,
+    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-3, 1e2], N_samples = 500, epsilon_max = 20, use_concentration = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.DMO = DMO
@@ -58,11 +58,11 @@ class BaryonificationClass(object):
                         
                         #Require mass to always increase w/ radius
                         #And remove pts of DMO = DMB, improves large-scale convergence
+                        #And require at least 1e-5 difference else the interpolator breaks :/
                         diff_mask = np.ones(len(M_DMB[i]), dtype = bool)
-                        diff_mask[0]  = True #Always keep the first point
-                        diff_mask[1:] = (np.diff(ln_DMB) > 1e-10) & (np.diff(ln_DMO) > 1e-10) 
-                        diff_mask     = diff_mask & (np.abs(ln_DMB - ln_DMO) > 1e-6) 
-                                                
+                        diff_mask = (np.diff(ln_DMB, prepend = 0) > 1e-5) & (np.diff(ln_DMO, prepend = 0) > 1e-5) 
+                        diff_mask = diff_mask & (np.abs(ln_DMB - ln_DMO) > 1e-6) 
+                                   
                         interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
                         interp_DMO = interpolate.CubicSpline(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
                         
@@ -93,8 +93,9 @@ class BaryonificationClass(object):
         if not hasattr(self, 'interp_d'):
             raise NameError("No Table created. Run setup_interpolator() method first")
 
-#         bounds = np.all((self.R_range[0] < x) & (self.R_range[1] > x))
-#         assert bounds, "Input x has limits (%0.2e, %0.2e). Rerun setup_interpolatr() with R_range = (x_min, x_max)" % (np.min(x), np.max(x)) 
+        #Commenting out for now
+        #bounds = np.all((self.R_range[0] < x) & (self.R_range[1] > x))
+        #assert bounds, "Input x has limits (%0.2e, %0.2e). Rerun setup_interpolatr() with R_range = (x_min, x_max)" % (np.min(x), np.max(x)) 
         
         if self.use_concentration:
             assert c is not None, f"You asked for model to be built with concentration. But you set c = {c}"
@@ -136,6 +137,9 @@ class Baryonification3D(BaryonificationClass):
         rho  = model.real(self.ccl_cosmo, r_int, M, a, mass_def = mass_def)
         rho  = np.where(rho < 0, 0, rho) #Enforce non-zero densities
         M    = np.cumsum(4*np.pi*r_int**3 * rho * dlnr, axis = -1)
+        
+        mask = np.isfinite(M) & (M > 0)
+        M    = np.clip(M, np.min(M[mask]), np.max(M[mask]))
         M    = np.exp(interpolate.CubicSpline(np.log(r_int), np.log(M), axis = -1, extrapolate = False)(np.log(r)))
 
         return M
@@ -157,6 +161,9 @@ class Baryonification2D(BaryonificationClass):
         Sigma = model.projected(self.ccl_cosmo, r_int, M, a, mass_def = mass_def) * a 
         Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
         M     = np.cumsum(2*np.pi*r_int**2 * Sigma * dlnr, axis = -1)
+        
+        mask  = np.isfinite(M) & (M > 0)
+        M     = np.clip(M, np.min(M[mask]), np.max(M[mask]))
         M     = np.exp(interpolate.CubicSpline(np.log(r_int), np.log(M), axis = -1, extrapolate = False)(np.log(r)))
 
         return M
