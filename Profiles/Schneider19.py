@@ -9,46 +9,35 @@ from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
 model_params = ['cdelta', 'epsilon', 'a', 'n', 
-                'theta_ej', 'theta_co', 'M_c', 'mu', 'gamma', 'delta',
-                'A', 'M1', 'eta', 'eta_delta', 'beta', 'beta_delta', 'epsilon_h',
+                
+                'theta_ej', 'theta_co', 'M_c', 'gamma', 'delta',
+                'mu_theta_ej', 'mu_theta_co', 'mu_beta', 'mu_gamma', 'mu_delta', #Mass dep
+                'M_theta_ej',  'M_theta_co', 'M_gamma', 'M_delta', #Mass dep norm
+                'nu_theta_ej', 'nu_theta_co', 'nu_M_c',  'nu_gamma', 'nu_delta', #Redshift  dep
+                'zeta_theta_ej', 'zeta_theta_co', 'zeta_M_c', 'zeta_gamma', 'zeta_delta', #Concentration dep
+                
+                'A', 'M1', 'eta', 'eta_delta', 'tau', 'tau_delta', 'epsilon_h',
                 'q', 'p', 'cutoff']
 
-
-#All profiles are exponentially suppressed after R = CUTOFF*R200c.
-#This is just to prevent infinite density issues
-CUTOFF = 10
 
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
-    def __init__(self,
-                 cdelta = None,
-                 epsilon = None, a = None, n = None,
-                 theta_ej = None, theta_co = None, M_c = None, mu = None, gamma = None, delta = None,
-                 A = None, M1 = None, eta = None, eta_delta = None, beta = None, beta_delta = None, epsilon_h = None,
-                 q = None, p = None, cutoff = None, xi_mm = None, R_range = [1e-10, 1e10], use_fftlog_projection = False):
-
-
-        self.epsilon    = epsilon
-        self.a          = a
-        self.n          = n
-        self.theta_ej   = theta_ej
-        self.theta_co   = theta_co
-        self.M_c        = M_c
-        self.mu         = mu
-        self.gamma      = gamma
-        self.delta      = delta
-        self.A          = A
-        self.M1         = M1
-        self.eta        = eta
-        self.eta_delta  = eta_delta
-        self.beta       = beta
-        self.beta_delta = beta_delta 
-        self.epsilon_h  = epsilon_h
-        self.q          = q
-        self.p          = p
-        self.cdelta     = cdelta
-
+    def __init__(self, xi_mm = None, R_range = [1e-10, 1e10], use_fftlog_projection = False, **kwargs):
+        
+        #Go through all input params, and assign Nones to ones that don't exist.
+        #If mass/redshift/conc-dependence, then set to 1 if don't exist
+        for m in model_params:
+            if m in kwargs.keys():
+                setattr(self, m, kwargs[m])
+            elif ('mu_' in m) or ('nu_' in m) or ('zeta_' in m): #Set mass/red/conc dependence
+                setattr(self, m, 0)
+            elif ('M_' in m): #Set mass normalization
+                setattr(self, m, 1e14)
+            else:
+                setattr(self, m, None)
+                    
+        
         #Import all other parameters from the base CCL Profile class
         super(SchneiderProfiles, self).__init__()
 
@@ -58,9 +47,10 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         #Sets the range that we compute profiles too (if we need to do any numerical stuff)
         self.R_range = R_range
         
+        
         #Sets the cutoff scale of all profiles, in comoving Mpc
         #This should be the box side length
-        self.cutoff  = cutoff
+        self.cutoff  = kwargs['cutoff'] if 'cutoff' in kwargs.keys() else None
         
         
         #This allows user to force usage of the default FFTlog projection, if needed.
@@ -87,6 +77,28 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         params = {k:v for k,v in vars(self).items() if k in model_params}
                   
         return params
+        
+        
+    def _get_gas_params(self, M, z):
+        
+        cdelta   = 1 if self.cdelta is None else self.cdelta
+        
+        M_c      = self.M_c * (1 + z)**self.nu_M_c * cdelta**self.zeta_M_c
+        beta     = 3*(M/self.M_c)**self.mu_beta / (1 + (M/self.M_c)**self.mu_beta)
+        
+        #Use M_c as the mass-normalization for simplicity sake
+        theta_ej = self.theta_ej * (M/self.M_theta_ej)**self.mu_theta_ej * (1 + z)**self.nu_theta_ej * cdelta**self.zeta_theta_ej
+        theta_co = self.theta_co * (M/self.M_theta_co)**self.mu_theta_co * (1 + z)**self.nu_theta_co * cdelta**self.zeta_theta_co
+        delta    = self.delta    * (M/self.M_delta)**self.mu_delta       * (1 + z)**self.nu_delta    * cdelta**self.zeta_delta
+        gamma    = self.gamma    * (M/self.M_gamma)**self.mu_gamma       * (1 + z)**self.nu_gamma    * cdelta**self.zeta_gamma
+        
+        beta     = beta[:, None]
+        theta_ej = theta_ej[:, None]
+        theta_co = theta_co[:, None]
+        delta    = delta[:, None]
+        gamma    = gamma[:, None]
+        
+        return beta, theta_ej, theta_co, delta, gamma
         
         
     def _projected_realspace(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -220,7 +232,9 @@ class DarkMatter(SchneiderProfiles):
         rho_c = M_use/Normalization
         rho_c = rho_c[:, None]
 
-        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2) #Extra exponential cutoff
+        arg  = (r_use[None, :] - self.cutoff)
+        arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
         prof = rho_c/(r_use/r_s * (1 + r_use/r_s)**2) * 1/(1 + (r_use/r_t)**2)**2 * kfac
         
         #Handle dimensions so input dimensions are mirrored in the output
@@ -253,7 +267,7 @@ class TwoHalo(SchneiderProfiles):
         if self.xi_mm is None:
             xi_mm   = ccl.correlation_3d(cosmo, a, r_use)
         else:
-            xi_mm   = self.xi_mm(r_use,)
+            xi_mm   = self.xi_mm(r_use, a)
 
         delta_c = 1.686/ccl.growth_factor(cosmo, a)
         nu_M    = delta_c / ccl.sigmaM(cosmo, M_use, a)
@@ -263,7 +277,9 @@ class TwoHalo(SchneiderProfiles):
         prof    = (1 + bias_M * xi_mm)*ccl.rho_x(cosmo, a, species = 'matter', is_comoving = True)
 
         #Need this truncation so the fourier space integral isnt infinity
-        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
+        arg  = (r_use[None, :] - self.cutoff)
+        arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
         prof = prof * kfac
 
         #Handle dimensions so input dimensions are mirrored in the output
@@ -300,21 +316,24 @@ class Stars(SchneiderProfiles):
 
         R   = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        eta_cga  = self.eta  + self.eta_delta
-        beta_cga = self.beta + self.beta_delta
+        eta_cga = self.eta + self.eta_delta
+        tau_cga = self.tau + self.tau_delta
         
-        f_cga = self.A * ((M_use/self.M1)**beta_cga + (M_use/self.M1)**eta_cga)**-1
+        f_cga  = self.A * ((M_use/self.M1)**tau_cga  + (M_use/self.M1)**eta_cga)**-1
 
         R_h   = self.epsilon_h * R
 
         f_cga, R_h = f_cga[:, None], R_h[:, None]
 
         r_integral = np.geomspace(1e-3, 100, 500)
-        rho   = DarkMatter(**self.model_params).real(cosmo, r_integral, M_use, a, mass_def)
+        DM    = DarkMatter(**self.model_params); setattr(DM, 'cutoff', 1e3) #Set large cutoff just for normalization calculation
+        rho   = DM.real(cosmo, r_integral, M_use, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
-        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
+        arg  = (r_use[None, :] - self.cutoff)
+        arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
         prof = f_cga*M_tot / (4*np.pi**(3/2)*R_h) * 1/r_use**2 * np.exp(-(r_use/2/R_h)**2) * kfac
                 
         #Handle dimensions so input dimensions are mirrored in the output
@@ -338,24 +357,28 @@ class Gas(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        u = r_use/(self.theta_co*R)[:, None]
-        v = r_use/(self.theta_ej*R)[:, None]
-
-        f_star = self.A * ((M_use/self.M1)**self.beta + (M_use/self.M1)**self.eta)**-1
+        f_star = self.A * ((M_use/self.M1)**self.tau + (M_use/self.M1)**self.eta)**-1
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
         f_gas  = f_bar - f_star
-
-        beta   = 3*(M_use/self.M_c)**self.mu / (1 + (M_use/self.M_c)**self.mu)
-
-        f_gas, beta = f_gas[:, None], beta[:, None]
-
+        f_gas  = f_gas[:, None]
+        
+        #Get gas params
+        beta, theta_ej, theta_co, delta, gamma = self._get_gas_params(M_use, z)
+        R_co = theta_co*R[:, None]
+        R_ej = theta_ej*R[:, None]
+        
+        u = r_use/R_co
+        v = r_use/R_ej
+        
+        
         #Integrate over wider region in radii to get normalization of gas profile
         r_integral = np.geomspace(1e-5, 100, 500)
 
-        u_integral = r_integral/(self.theta_co*R)[:, None]
-        v_integral = r_integral/(self.theta_ej*R)[:, None]
+        u_integral = r_integral/R_co
+        v_integral = r_integral/R_ej
+        
 
-        prof_integral  = 1/(1 + u_integral)**beta / (1 + v_integral**self.gamma)**((self.delta - beta)/self.gamma)
+        prof_integral  = 1/(1 + u_integral)**beta / (1 + v_integral**gamma)**( (delta - beta)/gamma )
 
         Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = -1)
         Normalization  = Normalization.integrate(np.log(r_integral[0]), np.log(r_integral[-1]))
@@ -363,12 +386,15 @@ class Gas(SchneiderProfiles):
 
         del u_integral, v_integral, prof_integral
 
-        rho   = DarkMatter(**self.model_params).real(cosmo, r_integral, M, a, mass_def)
+        DM    = DarkMatter(**self.model_params); setattr(DM, 'cutoff', 1e3) #Set large cutoff just for normalization calculation
+        rho   = DM.real(cosmo, r_integral, M_use, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
         M_tot = np.atleast_1d(M_tot)[:, None]
         
-        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
-        prof  = 1/(1 + u)**beta / (1 + v**self.gamma)**((self.delta - beta)/self.gamma) * kfac
+        arg   = (r_use[None, :] - self.cutoff)
+        arg   = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac  = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
+        prof  = 1/(1 + u)**beta / (1 + v**gamma)**( (delta - beta)/gamma ) * kfac
         prof *= f_gas*M_tot/Normalization
         
 
@@ -437,6 +463,12 @@ class CollisionlessMatter(SchneiderProfiles):
         if self.Stars is None: self.Stars = Stars(**kwargs)
         if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
             
+        #Stop any artificially cutoffs when doing the relaxation.
+        #The profil will be cutoff at the very last step instead
+        if hasattr(Gas, 'cutoff'): setattr(Gas, 'cutoff', 1e3)
+        if hasattr(Stars, 'cutoff'): setattr(Stars, 'cutoff', 1e3)
+        if hasattr(DarkMatter, 'cutoff'): setattr(DarkMatter, 'cutoff', 1e3)
+            
         self.max_iter   = max_iter
         self.reltol     = reltol
         
@@ -458,11 +490,11 @@ class CollisionlessMatter(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        eta_cga  = self.eta  + self.eta_delta
-        beta_cga = self.beta + self.beta_delta
+        eta_cga = self.eta + self.eta_delta
+        tau_cga = self.tau + self.tau_delta
         
-        f_star = self.A * ((M_use/self.M1)**self.beta + (M_use/self.M1)**self.eta)**-1
-        f_cga  = self.A * ((M_use/self.M1)**beta_cga  + (M_use/self.M1)**eta_cga)**-1
+        f_star = self.A * ((M_use/self.M1)**self.tau + (M_use/self.M1)**self.eta)**-1
+        f_cga  = self.A * ((M_use/self.M1)**tau_cga  + (M_use/self.M1)**eta_cga)**-1
         f_star = f_star[:, None]
         f_cga  = f_cga[:, None]
         f_sga  = f_star - f_cga
@@ -527,14 +559,15 @@ class CollisionlessMatter(SchneiderProfiles):
                     warnings.warn(warn_text, UserWarning)
                     break
 
-        ln_M_clm = np.vstack([np.log(f_clm[m_i]) + 
-                              ln_M_NFW[m_i](np.log(r_integral/relaxation_fraction[m_i])) for m_i in range(M_i.shape[0])])
+        ln_M_clm = np.vstack([np.log(f_clm[m_i]) + ln_M_NFW[m_i](np.log(r_integral/relaxation_fraction[m_i])) for m_i in range(M_i.shape[0])])
         ln_M_clm = interpolate.CubicSpline(np.log(r_integral), ln_M_clm, axis = -1, extrapolate = False)
         log_der  = ln_M_clm.derivative(nu = 1)(np.log(r_use))
         lin_der  = log_der * np.exp(ln_M_clm(np.log(r_use))) / r_use
         prof     = 1/(4*np.pi*r_use**2) * lin_der
         
-        kfac = np.exp( - (r_use[None, :]/self.cutoff)**2)
+        arg  = (r_use[None, :] - self.cutoff)
+        arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
         prof = np.where(np.isnan(prof), 0, prof) * kfac
 
         #Handle dimensions so input dimensions are mirrored in the output
