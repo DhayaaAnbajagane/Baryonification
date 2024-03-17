@@ -126,6 +126,24 @@ class ParamTabulatedProfile(object):
         assert not isinstance(model, TabulatedProfile), "Input model cannot be 'TabulatedProfile' object."
 
 
+    def _set_parameter(self, obj, key, value):
+        '''
+        Recursive function that checks all attributes of `obj' and then
+        for all Profile objects with input `key' it sets the value to 'value'.
+        '''
+        
+        obj_keys = dir(obj)
+        
+        assert key in obj_keys, f"The object passed into _set_parameter() has no attr named {key}"
+        
+        for k in obj_keys:
+            if k == key: 
+                setattr(obj, key, value)
+            elif isinstance(getattr(obj, k), ccl.halos.profiles.HaloProfile):
+                self._set_parameter(getattr(obj, k), key, value)
+                
+        
+        
     def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, 
                            z_linear_sampling = False, verbose = False, other_params = {}):
 
@@ -134,7 +152,7 @@ class ParamTabulatedProfile(object):
         r        = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr     = np.log(r[1]) - np.log(r[0])
 
-        p_keys   = list(other_params.keys())
+        p_keys   = list(other_params.keys()); setattr(self, 'p_keys', p_keys)
         interp3D = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys]) + np.NaN
         interp2D = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys]) + np.NaN
 
@@ -148,16 +166,9 @@ class ParamTabulatedProfile(object):
                 
                 for c in iterator:
                     
-                    #Modify the model input params so that they contain this
+                    #Modify the model input params so that they are run with the right parameters
                     for k_i in range(len(p_keys)):
-                        setattr(self.model, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
-                        
-                        #Need this so composite models (like DarkMatterOnly, CollisionlessMatter)
-                        #also have the correct modifications made to the submodels that are passed into them
-                        model_keys = list(self.model.__dict__.keys())
-                        for d_i in model_keys:
-                            if isinstance(getattr(self.model, d_i), ccl.halos.profiles.HaloProfile):
-                                setattr(getattr(self.model, d_i), p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
+                        self._set_parameter(self.model, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                     
                     #Build a custom index into the array
                     index = tuple([j, slice(None), slice(None)] + list(c))
@@ -215,7 +226,10 @@ class ParamTabulatedProfile(object):
         
         if not (hasattr(self, 'interp3D') & hasattr(self, 'interp2D')):
             raise NameError("No Table created. Run setup_interpolator() method first")
-
+        
+        for k in self.p_keys:
+            assert k in kwargs.keys(), "Need to provide %s as input into `real'. Table was built with this." % k
+        
         prof = self._readout(r, M, a, self.interp3D, **kwargs)
         
         return prof
@@ -225,7 +239,10 @@ class ParamTabulatedProfile(object):
         
         if not (hasattr(self, 'interp3D') & hasattr(self, 'interp2D')):
             raise NameError("No Table created. Run setup_interpolator() method first")
-
+        
+        for k in self.p_keys:
+            assert k in kwargs.keys(), "Need to provide %s as input into `projected'. Table was built with this." % k
+        
         prof = self._readout(r, M, a, self.interp2D, **kwargs)
         
         return prof
@@ -233,7 +250,53 @@ class ParamTabulatedProfile(object):
 
 class TabulatedCorrelation3D(object):
 
-    def __init__(self):
+    
+    def __init__(self, cosmo, R_range = [1e-3, 1e3], N_samples = 500):
 
+        self.cosmo     = cosmo
+        self.R_range   = R_range
+        self.N_samples = N_samples
+                
+        
+    def setup_interpolator(self, z_min = 0, z_max = 5, N_samples_z = 10, verbose = False):
+        
+        r    = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
+        dlnr = np.log(r[1]) - np.log(r[0])
+        z_range  = np.linspace(z_min, z_max, N_samples_z)
+        
+        interp3D = np.zeros([z_range.size, r.size]) + np.NaN
+        
+        #Loop over params to build table
+        with tqdm(total = z_range.size, desc = 'Building Table', disable = not verbose) as pbar:
+            for j in range(z_range.size):
+                
+                a = 1/(1 + z_range[j])
+                interp3D[j, :] = ccl.correlation_3d(self.cosmo, a, r)
+                
+                pbar.update(1)
+        
+        input_grid_1 = (np.log(1 + z_range), np.log(r))
 
-        raise NotImplementedError("TabulatedCorrelation3D is not yet implemented.")
+        self.raw_input_3D = interp3D
+        self.raw_input_z_range = np.log(1 + z_range)
+        self.raw_input_r_range = np.log(r)
+        
+        self.interp3D = interpolate.RegularGridInterpolator(input_grid_1, np.log(interp3D), bounds_error = False)
+        
+        
+    def __call__(self, r, a):
+        
+        r_use = np.atleast_1d(r)
+        a_use = np.atleast_1d(a)
+        z_use = 1/a_use - 1
+        
+        empty = np.ones_like(r_use)
+        z_in  = np.log(1/a)*empty #This is log(1 + z)
+        r_in  = np.log(r_use)
+        
+        ln_xi = self.interp3D( (z_in, r_in) )
+        xi    = np.exp(ln_xi)
+        
+        return xi
+        
+        
