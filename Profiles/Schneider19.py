@@ -7,6 +7,7 @@ import warnings
 from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
+from ..utils.Tabulate import _set_parameter
 
 
 model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
@@ -83,6 +84,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         return params
         
         
+    
     def _get_gas_params(self, M, z):
         
         cdelta   = 1 if self.cdelta is None else self.cdelta
@@ -188,10 +190,14 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         return self.__str__()
     
     
+    #Add routines for consistently changing input params across all profiles
+    def set_parameter(self, key, value): 
+        _set_parameter(self, key, value)
     
-    from ..utils.misc import generate_operator_method
     
     #Add routines for doing simple arithmetic operations with the classes
+    from ..utils.misc import generate_operator_method
+    
     __add__      = generate_operator_method(add)
     __mul__      = generate_operator_method(mul)
     __sub__      = generate_operator_method(sub)

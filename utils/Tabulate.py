@@ -9,6 +9,21 @@ from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
 
+def _set_parameter(obj, key, value):
+    '''
+    Recursive function that checks all attributes of `obj' and then
+    for all Profile objects with input `key' it sets the value to 'value'.
+    '''
+
+    obj_keys = dir(obj)
+    
+    for k in obj_keys:
+        if k == key: 
+            setattr(obj, key, value)
+        elif isinstance(getattr(obj, k), ccl.halos.profiles.HaloProfile):
+            _set_parameter(getattr(obj, k), key, value)
+
+            
 class TabulatedProfile(ccl.halos.profiles.HaloProfile):
 
     def __init__(self, model, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -126,23 +141,6 @@ class ParamTabulatedProfile(object):
         assert not isinstance(model, TabulatedProfile), "Input model cannot be 'TabulatedProfile' object."
 
 
-    def _set_parameter(self, obj, key, value):
-        '''
-        Recursive function that checks all attributes of `obj' and then
-        for all Profile objects with input `key' it sets the value to 'value'.
-        '''
-        
-        obj_keys = dir(obj)
-        
-        assert key in obj_keys, f"The object passed into _set_parameter() has no attr named {key}"
-        
-        for k in obj_keys:
-            if k == key: 
-                setattr(obj, key, value)
-            elif isinstance(getattr(obj, k), ccl.halos.profiles.HaloProfile):
-                self._set_parameter(getattr(obj, k), key, value)
-                
-        
         
     def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, 
                            z_linear_sampling = False, verbose = False, other_params = {}):
@@ -168,7 +166,7 @@ class ParamTabulatedProfile(object):
                     
                     #Modify the model input params so that they are run with the right parameters
                     for k_i in range(len(p_keys)):
-                        self._set_parameter(self.model, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
+                        _set_parameter(self.model, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                     
                     #Build a custom index into the array
                     index = tuple([j, slice(None), slice(None)] + list(c))

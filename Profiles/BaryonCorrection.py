@@ -12,6 +12,13 @@ class BaryonificationClass(object):
 
         self.DMO = DMO
         self.DMB = DMB
+        
+        #Set cutoff to absurdly high values to profile is never cutoff.
+        #If it is cutoff then we sometimes get failures in interpolation at large R
+        #The cutoffs are implicitly placed when the offsets are applied to data
+        self.DMO.set_parameter('cutoff', 1e10)
+        self.DMB.set_parameter('cutoff', 1e10)
+        
         self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
         self.R_range     = R_range
         self.epsilon_max = epsilon_max
