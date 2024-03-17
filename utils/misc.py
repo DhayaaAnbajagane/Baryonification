@@ -3,7 +3,7 @@ import pyccl as ccl
 from operator import add, mul, sub, truediv, pow, abs, neg, pos
 
 
-def generate_operator_method(op):
+def generate_operator_method(op, reflect = False):
     '''
     Define a method for generating the simple arithmetic
     operations for the Profile classes. This changes the _real()
@@ -29,15 +29,31 @@ def generate_operator_method(op):
                 else:
                     B = other
 
-                return op(A, B)
+                if not reflect:
+                    return op(A, B)
+                else:
+                    return op(B, A)
 
             def __str_prf__():
 
                 op_name = op.__name__
                 cl_name = self.__str_prf__()
-                ot_name = other.__class__.__name__ if isinstance(other, ccl.halos.profiles.HaloProfile) else other
+                
+                #Check if it has cutom string output already
+                #If not then use the class name. Or if int/float just use number
+                if isinstance(other, ccl.halos.profiles.HaloProfile):
+                    if hasattr(other, '__str_prf__'):
+                        ot_name = other.__str_prf__()
+                    else:
+                        ot_name = other.__class__.__name__ 
+                else: 
+                    ot_name = other
 
-                return f"{op_name}[{cl_name}, {ot_name}]"
+                
+                if not reflect:
+                    return f"{op_name}[{cl_name}, {ot_name}]"
+                else:
+                    return f"{op_name}[{ot_name}, {cl_name}]"
 
             Combined._real = __tmp_real__
             Combined.__str_prf__ = __str_prf__
