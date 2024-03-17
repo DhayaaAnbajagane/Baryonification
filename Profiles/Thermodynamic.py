@@ -6,7 +6,7 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-from ..Profiles.Schneider19 import SchneiderProfiles, Gas, DarkMatterBaryon, TwoHalo
+from ..Profiles.Schneider19 import model_params, SchneiderProfiles, Gas, DarkMatterBaryon, TwoHalo
 
 
 #Define relevant physical constants
@@ -36,7 +36,6 @@ Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 #value for numerical reasons (interpolator). This is a
 #computatational constant
 Pressure_at_infinity = 0
-
 
 class Pressure(SchneiderProfiles):
     """
@@ -90,9 +89,6 @@ class Pressure(SchneiderProfiles):
         prof  = np.exp(prof(np.log(r_use)) - Pressure_at_infinity)
         prof  = np.where(np.isfinite(prof), prof, 0) #Get rid of pesky NaN and inf values! They break CCL spline interpolator
         
-        nth_frac = self._nonthermal_fraction(cosmo, r_use, M_use, a, model = self.nonthermal_model, mass_def = mass_def)
-        prof     = prof * (1 - nth_frac) #We only want thermal pressure
-        
         #Convert to CGS
         prof = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
 
@@ -102,38 +98,81 @@ class Pressure(SchneiderProfiles):
         if np.ndim(M) == 0:
             prof = np.squeeze(prof, axis=0)
 
-        assert np.all(prof >= 0), "Something went wrong. Pressure is negative in some places"
-
         return prof
     
 
-    def _nonthermal_fraction(self, cosmo, r, M, a, model = 'Green20', mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
+class NonThermalFrac(SchneiderProfiles):
+    
+    def __init__(self, **kwargs):
+        
+        self.alpha_nt = kwargs['alpha_nt']
+        self.nu_nt    = kwargs['nu_nt']
+        self.gamma_nt = kwargs['gamma_nt']
+        
+        super().__init__(**kwargs)
+        
+    
+    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
-        if model is None:
-            nth = 0
+        z = 1/a - 1
+
+        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+
+        f_max = 6**-self.gamma_nt/self.alpha_nt
+        f_z   = np.min([(1 + z)**self.nu_nt, (f_max - 1)*np.tanh(self.nu_nt * z) + 1])
+        f_nt  = self.alpha_nt * f_z * (r_use/R[:, None])**self.gamma_nt
+        f_nt  = np.clip(f_nt, 0, 1) #Enforce 0 < f_nt < 1
+        prof  = f_nt #Rename just for consistency sake
         
-        elif model == 'Green20': #Based on arxiv: 2002.01934, equation 20 and Table 3
-            
-            #They define the model with R200m, so gotta use that redefinition here.
-            M200m = mass_def.translate_mass(cosmo, M_use, a, ccl.halos.massdef.MassDef200m())
-            R200m = ccl.halos.massdef.MassDef200m().get_radius(cosmo, M_use, a)/a #in comoving distance
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0:
+            prof = np.squeeze(prof, axis=0)
 
-            x = r_use/R200m[:, None]
+        return prof
+    
+    
 
-            a, b, c, d, e, f = 0.495, 0.719, 1.417,-0.166, 0.265, -2.116
-            nu_M = M_use/ccl.sigmaM(cosmo, M200m, a)
-            nu_M = nu_M[:, None]
-            nth  = 1 - a * (1 + np.exp(-(x/b)**c)) * (nu_M/4.1)**(d/(1 + (x/e)**f))
-            
-        else:
-            raise ValueError("Need to use model = None or model = Green20 No other model implemented so far.")
+class NonThermalFracGreen20(SchneiderProfiles):
+    
+    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+        
+        
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
 
-        return nth
+        z = 1/a - 1
 
+        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
+        
+        #They define the model with R200m, so gotta use that redefinition here.
+        M200m = mass_def.translate_mass(cosmo, M_use, a, ccl.halos.massdef.MassDef200m())
+        R200m = ccl.halos.massdef.MassDef200m().get_radius(cosmo, M_use, a)/a #in comoving distance
+
+        x = r_use/R200m[:, None]
+
+        a, b, c, d, e, f = 0.495, 0.719, 1.417,-0.166, 0.265, -2.116
+        nu_M = M_use/ccl.sigmaM(cosmo, M200m, a)
+        nu_M = nu_M[:, None]
+        nth  = 1 - a * (1 + np.exp(-(x/b)**c)) * (nu_M/4.1)**(d/(1 + (x/e)**f))
+        prof = nth #Rename just for consistency sake
+        
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0:
+            prof = np.squeeze(prof, axis=0)
+
+        return prof
+
+    
 
 class ElectronPressure(Pressure):
     

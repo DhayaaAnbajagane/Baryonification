@@ -8,17 +8,21 @@ from scipy import interpolate
 from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
 from astropy import units as u
 
-model_params = ['cdelta', 'epsilon', 'a', 'n', 
+
+model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
+                'q', 'p', 'cutoff', #Relaxation params + cutoff
                 
-                'theta_ej', 'theta_co', 'M_c', 'gamma', 'delta',
+                'theta_ej', 'theta_co', 'M_c', 'gamma', 'delta', #Default gas profile param
                 'mu_theta_ej', 'mu_theta_co', 'mu_beta', 'mu_gamma', 'mu_delta', #Mass dep
                 'M_theta_ej',  'M_theta_co', 'M_gamma', 'M_delta', #Mass dep norm
                 'nu_theta_ej', 'nu_theta_co', 'nu_M_c',  'nu_gamma', 'nu_delta', #Redshift  dep
                 'zeta_theta_ej', 'zeta_theta_co', 'zeta_M_c', 'zeta_gamma', 'zeta_delta', #Concentration dep
                 
-                'A', 'M1', 'eta', 'eta_delta', 'tau', 'tau_delta', 'epsilon_h',
-                'q', 'p', 'cutoff']
-
+                'A', 'M1', 'eta', 'eta_delta', 'tau', 'tau_delta', 'epsilon_h', #Star params
+                
+                'alpha_nt', 'nu_nt', 'gamma_nt', 'mean_molecular_weight' #Non-thermal pressure and gas density
+               
+               ]
 
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
@@ -154,6 +158,9 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     
     
     def __str_par__(self):
+        '''
+        String with all input params and their values
+        '''
         
         string = f"("
         for m in model_params:
@@ -162,6 +169,9 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         return string
         
     def __str_prf__(self):
+        '''
+        String with the class/profile name
+        '''
         
         string = f"{self.__class__.__name__}"
         return string
@@ -182,15 +192,20 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     from ..utils.misc import generate_operator_method
     
     #Add routines for doing simple arithmetic operations with the classes
-    __add__     = generate_operator_method(add)
-    __mul__     = generate_operator_method(mul)
-    __sub__     = generate_operator_method(sub)
-    __pow__     = generate_operator_method(pow)
-    __truediv__ = generate_operator_method(truediv)
+    __add__      = generate_operator_method(add)
+    __mul__      = generate_operator_method(mul)
+    __sub__      = generate_operator_method(sub)
+    __truediv__  = generate_operator_method(truediv)
+    __pow__      = generate_operator_method(pow)
     
-    __abs__     = generate_operator_method(abs)
-    __pos__     = generate_operator_method(pos)
-    __neg__     = generate_operator_method(neg)    
+    __radd__     = generate_operator_method(add, reflect = True)
+    __rmul__     = generate_operator_method(mul, reflect = True)
+    __rsub__     = generate_operator_method(sub, reflect = True)
+    __rtruediv__ = generate_operator_method(truediv, reflect = True)
+    
+    __abs__      = generate_operator_method(abs)
+    __pos__      = generate_operator_method(pos)
+    __neg__      = generate_operator_method(neg)    
 
 
 
