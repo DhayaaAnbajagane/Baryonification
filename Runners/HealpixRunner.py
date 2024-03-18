@@ -2,6 +2,7 @@
 import numpy as np
 import pyccl as ccl
 import healpy as hp
+from numba import njit
 
 from scipy import interpolate
 from astropy.cosmology import FlatwCDM
@@ -13,6 +14,31 @@ from tqdm import tqdm
 MY_FILL_VAL = np.NaN
 
 
+@njit
+def regrid_pixels_hpix(hmap, parent_pix_vals, child_pix, child_weights):
+    '''
+    Function that quickly assigns displaced healpix pixels back to the original
+    map grid.
+    
+    hmap: new array that is the healpix map to assign pixels to
+    parent_pix_vals: the values of the shifted pixels
+    child_pix: the 4 hmap pixels that each displaced pixel contribute to
+    child_weight: the weight of the contribution to each of the 4 pixels.
+    
+    In practice, get child_pix and child_weight from hp.interp_values().
+    '''
+    
+    for i in range(parent_pix_vals.size):
+
+        for j in range(4):
+            
+            hmap[child_pix[i, j]] += child_weights[i, j] * parent_pix_vals[i]
+
+    
+    return hmap
+
+
+                    
 class DefaultRunner(object):
     '''
     A class that contains relevant utils for input/output
@@ -24,7 +50,6 @@ class DefaultRunner(object):
         self.HaloLightConeCatalog  = HaloLightConeCatalog
         self.LightconeShell        = LightconeShell
         self.cosmo  = HaloLightConeCatalog.cosmology
-        self.M_part = LightconeShell.M_part
         self.model  = model
         
         
@@ -34,6 +59,9 @@ class DefaultRunner(object):
         self.config   = self.set_config(config)
 
         self.use_ellipticity = use_ellipticity
+        
+        if use_ellipticity:
+            raise NotImplementedError("You have set use_ellipticity = True, but this not yet implemented for HealpixRunner")
 
 
     def set_config(self, config):
@@ -109,13 +137,13 @@ class BaryonifyShell(DefaultRunner):
         healpix_inds = np.arange(hp.nside2npix(self.LightconeShell.NSIDE), dtype = int)
 
         orig_map = self.LightconeShell.map
-        new_map  = orig_map.copy()
+        NSIDE    = self.LightconeShell.NSIDE
 
-        res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
-        res_arcmin = res * 180/np.pi * 60
-
-        z_t = np.linspace(0, 10, 1000)
+        #Build interpolator between redshift and ang-diam-dist. Assume we never use z > 30
+        z_t = np.linspace(0, 30, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
+        
+        pix_offsets = np.zeros([orig_map.size, 3]) 
         
         for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
 
@@ -127,89 +155,49 @@ class BaryonifyShell(DefaultRunner):
             
             c_j = self.HaloNDCatalog.cat['c'][j] if self.model.use_concentration else None
 
-            if self.use_ellipticity:
-                ar_j = self.HaloNDCatalog.cat['a_ell'][j]
-                br_j = self.HaloNDCatalog.cat['b_ell'][j]
-                A_j  = self.HaloNDCatalog.cat['A'][j]
-                A_j  = A_j/np.sqrt(np.sum(A_j**2))
-            
-            
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
-
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
-            Nsize  = int(Nsize // 2)*2 #Force it to be even
-            if Nsize < 2: continue #Skip halo if its small. Displacement will just be zero.
-
-            #We don't need to account for halo location within pixel because projector call
-            #used below will get map around EXACT location of halo
-            x = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
-            x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
-            r_grid = np.sqrt(x_grid**2 + y_grid**2)
-
-            x_hat = x_grid/r_grid
-            y_hat = y_grid/r_grid
-
-            GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
-
-            map_cutout    = GnomProjector.projmap(orig_map,
-                                                  lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
-                                                  rot=(ra_j, dec_j))
-
-            #Need this because map value doesn't account for pixel
-            #size changes when reprojecting. It only resamples the map.
-            #This assumes the map being input is a MASS map not a DENSITY map.
-            map_cutout *= self.config['pixel_scale_factor']**2
-
-            p_ind      = GnomProjector.projmap(healpix_inds,
-                                               lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
-                                               rot=(ra_j, dec_j)).flatten().astype(int)
-
-            p_ind, ind, inv_ind = np.unique(p_ind, return_index = True, return_inverse = True)
-            interp_map = interpolate.RegularGridInterpolator((x, x), map_cutout.T, bounds_error = False, fill_value = MY_FILL_VAL)
-
-            #If ellipticity exists, then account for it
-            if self.use_ellipticity:
-                assert np.logical_and(ar_j > 0, br_j > 0), "The axis ratio in halo %d is zero" % j
-
-                Rmat   = self.build_Rmat(A_j, np.array([1, 0]))
-                x_grid_ell, y_grid_ell = (self.coord_array(x_grid, y_grid) @ Rmat).T
-                r_grid = np.sqrt(x_grid_ell**2/ar_j**2 +  y_grid_ell**2/br_j**2).reshape(x_grid.shape)
+            vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
+            
+            radius = R_j * self.config['epsilon_max_Cutout'] / D_j
+            pixind = hp.query_disc(self.LightconeShell.NSIDE, vec_j, radius, inclusive = False, nest = False)
+            
+            #If there are less than 4 particles, use the 4 nearest particles
+            if pixind.size < 4:
+                pixind = hp.get_interp_weights(NSIDE, ra_j, dec_j, lonlat = True)[0]
                 
+            vec    = np.stack(hp.pix2vec(nside = NSIDE, ipix = pixind), axis = 1)
+            
+            pos_j  = vec_j * D_j #We assume flat cosmologies, where D_a is the right distance to use here
+            pos    = vec   * D_j
+            diff   = pos - pos_j
+            r_sep  = np.sqrt(np.sum(diff**2, axis = 1))
             
             #Compute the displacement needed
-            offset     = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j).reshape(r_grid.shape) * a_j
+            offset = self.model.displacements(r_sep/a_j, M_j, a_j, c = c_j) * a_j
+            offset = offset[:, None] * (diff/r_sep[:, None]) #Add direction
+            offset = np.where(np.isfinite(offset), offset, 0) #If offset is weird, set it to 0
             
-            in_coords  = np.vstack([(x_grid + offset*x_hat).flatten(), (y_grid + offset*y_hat).flatten()]).T
-            modded_map = interp_map(in_coords)
+            #Now convert the 3D offset into a shift in the unit vector of the pixel
+            nw_pos = pos + offset #New position
+            nw_vec = nw_pos/np.sqrt(np.sum(nw_pos**2, axis = 1))[:, None] #Get unit vector of new position
+            offset = nw_vec - vec #Subtract from it the pixel's original unit vector
             
-            #Find which part of map cannot be modified due to out-of-bounds errors
-            #Skip if no pixels are usable
-            mask       = np.isfinite(modded_map) 
-            if mask.sum() == 0: continue
+            #Accumulate the offsets in the UNIT VECTORS of the hpixels
+            pix_offsets[pixind, :] += offset
+        
             
-            #Ensure that the offsets are 0 where we have no proper model prediction
-            #Then any mass offsets smaller than particle mass in the simulation is ignored.
-            #This makes the map method match the particle method to percent-level accuracy.
-            mass_offsets = np.where(mask, modded_map - orig_map_flat[inds], 0) #Set those offsets to 0
-            mask_safe    = np.logical_and(np.abs(mass_offsets) > self.M_part, orig_map_flat[inds] > 0)
-            if mask_safe.sum() == 0: continue
-
-               
-            #Enforce mass conservation so total mass is zero. Only do this to pixels where
-            #the offset is sufficiently large. This is to prevent large, visually apparent DC modes
-            mass_offsets[mask_safe] -= np.mean(mass_offsets[mask_safe])
-            mass_offsets[~mask_safe] = 0
-            
-
-            #Find which healpix pixels each subpixel corresponds to.
-            #Get total mass offset per healpix pixel
-            healpix_map_offsets = np.bincount(np.arange(len(p_ind))[inv_ind], weights = mass_offsets)
-
-            #Add the offsets to the new healpix map
-            new_map[p_ind] += healpix_map_offsets
-            
-
+        new_map = np.zeros(orig_map.size, dtype = float)
+        
+        new_vec = np.stack( hp.pix2vec(NSIDE, np.arange(orig_map.size)), axis = 1) + pix_offsets
+        new_ang = np.stack( hp.vec2ang(new_vec, lonlat = True), axis = 1)
+        p_pix   = np.where(orig_map > 0)[0] #Only select regions with positive mass. Zero mass pixels don't matter
+        
+        c_pix, c_weight = hp.get_interp_weights(NSIDE, new_ang[p_pix, 0], new_ang[p_pix, 1], lonlat = True)
+        c_pix, c_weight = c_pix.T, c_weight.T
+        
+        new_map = regrid_pixels_hpix(new_map, orig_map[p_pix], c_pix, c_weight)
+        
         self.output(new_map)
 
         return new_map
@@ -234,13 +222,10 @@ class PaintProfilesShell(DefaultRunner):
         orig_map = self.LightconeShell.map
         new_map  = np.zeros_like(orig_map).astype(np.float64)
 
-        assert self.model is not None, "You MUST provide a model"
+        assert self.model is not None, "You must provide a model"
         Baryons = self.model
 
-        res        = self.config['pixel_scale_factor'] * hp.nside2resol(self.LightconeShell.NSIDE)
-        res_arcmin = res * 180/np.pi * 60
-
-        z_t = np.linspace(0, 10, 1000)
+        z_t = np.linspace(0, 30, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
         
         for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
@@ -249,57 +234,29 @@ class PaintProfilesShell(DefaultRunner):
             z_j = self.HaloLightConeCatalog.cat['z'][j]
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
-            D_j = D_a(z_j)
+            D_j = D_a(z_j) #also physical Mpc since Ang. Diam. Dist.
             
-            dA = (res * D_j)**2 / (a_j**2) #comoving area
-
-            if self.use_ellipticity:
-                ar_j = self.HaloNDCatalog.cat['a_ell'][j]
-                br_j = self.HaloNDCatalog.cat['b_ell'][j]
-                A_j  = self.HaloNDCatalog.cat['A'][j]
-                A_j  = A_j/np.sqrt(np.sum(A_j**2))
+            c_j = self.HaloNDCatalog.cat['c'][j] if self.model.use_concentration else None
 
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
-
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / D_j / res
-            Nsize  = int(Nsize // 2)*2 #Force it to be even
-            Nsize  = np.clip(Nsize, 2, np.inf) #Don't skip small halos and sum all contributions within pixel
-
-            x      = np.linspace(-Nsize/2, Nsize/2, Nsize) * res * D_j
-
-            x_grid, y_grid = np.meshgrid(x, x, indexing = 'xy')
-
-            r_grid = np.sqrt(x_grid**2 + y_grid**2)
-
-            GnomProjector = hp.projector.GnomonicProj(xsize = Nsize, reso = res_arcmin)
-            p_ind         = GnomProjector.projmap(healpix_inds,
-                                                  lambda x, y, z: hp.vec2pix(self.LightconeShell.NSIDE, x, y, z),
-                                                  rot=(ra_j, dec_j)).flatten().astype(int)
-
-            p_ind, ind, inv_ind = np.unique(p_ind, return_index = True, return_inverse = True)
+            vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
             
-            #If ellipticity exists, then account for it
-            if self.use_ellipticity:
-                assert ar_j*br_j > 0, "The axis ratio in halo %d is zero" % j
-
-                Rmat   = self.build_Rmat(A_j, np.array([1, 0]))
-                x_grid_ell, y_grid_ell = (self.coord_array(x_grid, y_grid) @ Rmat).T
-                r_grid = np.sqrt(x_grid_ell**2/ar_j**2 +  y_grid_ell**2/br_j**2).reshape(x_grid.shape)
-
-            Painting = Baryons.projected(cosmo, r_grid.flatten()/a_j, M_j, a_j) * dA
+            radius = R_j * self.config['epsilon_max_Cutout'] / D_j
+            pixind = hp.query_disc(self.LightconeShell.NSIDE, vec_j, radius, inclusive = False, nest = False)
+            vec    = np.stack(hp.pix2vec(nside = NSIDE, ipix = pixind), axis = 1)
             
-            mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
-            if mask.sum() == 0: continue
-                
-            Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
+            pos_j  = vec_j * D_j #We assume flat cosmologies, where D_a is the right distance to use here
+            pos    = vec   * D_j
+            diff   = pos - pos_j
+            r_sep  = np.sqrt(np.sum(diff**2, axis = 1))
             
-            #Find which healpix pixels each subpixel corresponds to.
-            #Get total pressure per healpix pixel
-            healpix_map_offsets = np.bincount(np.arange(len(p_ind))[inv_ind], weights = Painting)
-
-            #Add the pressure to the new healpix map
-            new_map[p_ind] += healpix_map_offsets            
+            #Compute the painted map
+            Paint  = Baryons.projected(cosmo, r_sep/a_j, M_j, a_j)
+            Paint  = np.where(np.isfinite(Painting), Painting, 0) #Set non-finite tSZ values to 0
+            
+            #Add the profiles to the new healpix map
+            new_map[pixind] += Paint         
 
         self.output(new_map)
 
