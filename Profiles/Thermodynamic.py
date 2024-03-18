@@ -52,6 +52,11 @@ class Pressure(SchneiderProfiles):
         if self.Gas is None: self.Gas = Gas(**kwargs)
         if self.DarkMatterBaryon is None: self.DarkMatterBaryon = DarkMatterBaryon(**kwargs) - TwoHalo(**kwargs)
             
+        #Now make sure the cutoff is sufficiently high
+        #We don't want small cutoff when computing the true pressure profile.
+        self.Gas.set_parameter('cutoff', 1000)
+        self.DarkMatterBaryon.set_parameter('cutoff', 1000)
+            
         self.nonthermal_model = nonthermal_model
         super().__init__(**kwargs)
         
@@ -91,6 +96,14 @@ class Pressure(SchneiderProfiles):
         
         #Convert to CGS
         prof = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
+        
+        
+        #Now do cutoff
+        arg  = (r_use[None, :] - self.cutoff)
+        arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
+        prof = prof * kfac
+        
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:

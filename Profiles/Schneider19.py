@@ -485,10 +485,10 @@ class CollisionlessMatter(SchneiderProfiles):
         if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
             
         #Stop any artificially cutoffs when doing the relaxation.
-        #The profil will be cutoff at the very last step instead
-        if hasattr(Gas, 'cutoff'): setattr(Gas, 'cutoff', 1e3)
-        if hasattr(Stars, 'cutoff'): setattr(Stars, 'cutoff', 1e3)
-        if hasattr(DarkMatter, 'cutoff'): setattr(DarkMatter, 'cutoff', 1e3)
+        #The profile will be cutoff at the very last step instead
+        self.Gas.set_parameter('cutoff', 1000)
+        self.Stars.set_parameter('cutoff', 1000)
+        self.DarkMatter.set_parameter('cutoff', 1000)
             
         self.max_iter   = max_iter
         self.reltol     = reltol
