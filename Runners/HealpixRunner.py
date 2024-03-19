@@ -221,9 +221,10 @@ class PaintProfilesShell(DefaultRunner):
 
         orig_map = self.LightconeShell.map
         new_map  = np.zeros_like(orig_map).astype(np.float64)
+        NSIDE    = self.LightconeShell.NSIDE
 
         assert self.model is not None, "You must provide a model"
-        Baryons = self.model
+        Baryons  = self.model
 
         z_t = np.linspace(0, 30, 1000)
         D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
@@ -236,8 +237,6 @@ class PaintProfilesShell(DefaultRunner):
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j) #also physical Mpc since Ang. Diam. Dist.
             
-            c_j = self.HaloNDCatalog.cat['c'][j] if self.model.use_concentration else None
-
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
             vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
@@ -253,7 +252,7 @@ class PaintProfilesShell(DefaultRunner):
             
             #Compute the painted map
             Paint  = Baryons.projected(cosmo, r_sep/a_j, M_j, a_j)
-            Paint  = np.where(np.isfinite(Painting), Painting, 0) #Set non-finite tSZ values to 0
+            Paint  = np.where(np.isfinite(Paint), Paint, 0) #Set non-finite tSZ values to 0
             
             #Add the profiles to the new healpix map
             new_map[pixind] += Paint         
