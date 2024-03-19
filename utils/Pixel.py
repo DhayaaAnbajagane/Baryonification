@@ -42,8 +42,6 @@ class ConvolvedProfile(object):
     
     def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
-        assert self.isHarmonic == False, "Can't use harmonic (healpix) pixel beam when computing a 3D profile"
-        
         r_min = np.min(r) * self.fft_par['padding_lo_fftlog']
         r_max = np.max(r) * self.fft_par['padding_hi_fftlog']
         n     = self.fft_par['n_per_decade'] * np.int32(np.log10(r_max/r_min))
@@ -129,6 +127,13 @@ class GridPixelApprox(object):
 class HealPixel(object):
     """
     A class for holding the window of a healpix pixel
+    
+    We use an analytic profile -- the Gaussian beam -- instead of the
+    inbuilt pixel window in healpix. This is because the latter only
+    exists up to 3*NSIDE - 1 whereas for stabel FFTlogs, we want a smooth
+    window function to large ell ranges. The Gaussian beam, with a FWHM that
+    is 1/sqrt(2) smaller is similar to the healpix pixel window with <0.1%
+    for most scales and 1% at the smallest scales.
     """
     
     def __init__(self, NSIDE):
@@ -139,13 +144,13 @@ class HealPixel(object):
     
     def real(self, k):
         
-        raise NotImplementedError("Cannot use real beam when using Healpix pixel")
+        return np.zeros_like(k)
         
     
     def projected(self, k):
         
-        beam = hp.pixwin(self.NSIDE, lmax = np.int32(np.max(k)))
-        beam = interpolate.CubicSpline(np.arange(beam.size), beam, extrapolate = False)(k)
+        sig  = hp.nside2resol(self.NSIDE) / np.sqrt(8 * np.log(2)) / np.sqrt(2)
+        beam = np.exp(-k*(1 + k)/2 * sig**2)
         
         return beam
         
