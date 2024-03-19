@@ -60,6 +60,11 @@ class ConvolvedProfile(object):
     
     def projected(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
+        if self.isHarmonic:
+            
+            assert a < 1, f"You cannot set a = 1, z = 0 when computing harmonic sky projections"
+            D_A = ccl.background.angular_diameter_distance(cosmo, a)
+            
         r_min = np.min(r) * self.fft_par['padding_lo_fftlog']
         r_max = np.max(r) * self.fft_par['padding_hi_fftlog']
         n     = self.fft_par['n_per_decade'] * np.int32(np.log10(r_max/r_min))
@@ -67,15 +72,12 @@ class ConvolvedProfile(object):
         r_fft = np.geomspace(r_min, r_max, n)
         prof  = self.Profile.projected(cosmo, r_fft, M, a, mass_def)
         
-        if self.isHarmonic:
-            D_A   = ccl.background.angular_diameter_distance(cosmo, a)
-            r_fft = r_fft * a / D_A
+        if self.isHarmonic: r_fft = r_fft * a / D_A
         
         k_out, Pk   = fftlog(r_fft, prof, 2, 0, self.fft_par['plaw_fourier'] + 1)
         r_out, prof = fftlog(k_out, Pk * self.Pixel.projected(k_out), 2, 0, self.fft_par['plaw_fourier'] + 1)
         
-        if self.isHarmonic:
-            r_out = r_out / a * D_A
+        if self.isHarmonic: r_out = r_out / a * D_A
         
         prof = interpolate.CubicSpline(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
         prof = np.where(np.isnan(prof), 0, prof) * (2*np.pi)**2
