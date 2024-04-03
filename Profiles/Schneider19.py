@@ -244,7 +244,7 @@ class DarkMatter(SchneiderProfiles):
         
         #Get the normalization (rho_c) numerically
         #The analytic integral doesn't work since we have a truncation radii now.
-        r_integral = np.geomspace(1e-6, 100, 500)
+        r_integral = np.geomspace(1e-6, 1000, 500)
 
         prof_integral  = 1/(r_integral/r_s * (1 + r_integral/r_s)**2) * 1/(1 + (r_integral/r_t)**2)**2
         Normalization  = [interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * p) for p in prof_integral]
@@ -346,7 +346,7 @@ class Stars(SchneiderProfiles):
 
         f_cga, R_h = f_cga[:, None], R_h[:, None]
 
-        r_integral = np.geomspace(1e-3, 100, 500)
+        r_integral = np.geomspace(1e-6, 1000, 500)
         DM    = DarkMatter(**self.model_params); setattr(DM, 'cutoff', 1e3) #Set large cutoff just for normalization calculation
         rho   = DM.real(cosmo, r_integral, M_use, a, mass_def)
         M_tot = np.trapz(4*np.pi*r_integral**2 * rho, r_integral, axis = -1)
@@ -393,17 +393,14 @@ class Gas(SchneiderProfiles):
         
         
         #Integrate over wider region in radii to get normalization of gas profile
-        r_integral = np.geomspace(1e-5, 100, 500)
+        r_integral = np.geomspace(1e-6, 1000, 500)
 
         u_integral = r_integral/R_co
         v_integral = r_integral/R_ej
         
 
-        prof_integral  = 1/(1 + u_integral)**beta / (1 + v_integral**gamma)**( (delta - beta)/gamma )
-
-        Normalization  = interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * prof_integral, axis = -1)
-        Normalization  = Normalization.integrate(np.log(r_integral[0]), np.log(r_integral[-1]))
-        Normalization  = Normalization[:, None]
+        prof_integral = 1/(1 + u_integral)**beta / (1 + v_integral**gamma)**( (delta - beta)/gamma )
+        Normalization = np.trapz(4 * np.pi * r_integral**2 * prof_integral, r_integral, axis = -1)[:, None]
 
         del u_integral, v_integral, prof_integral
 
@@ -504,7 +501,7 @@ class CollisionlessMatter(SchneiderProfiles):
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
         #due to the finite width oof the profile during iteration.
-        r_integral = np.geomspace(1e-5, 300, 500)
+        r_integral = np.geomspace(1e-6, 1000, 500)
         safe_range = (r_integral > 2 * np.min(r_integral) ) & (r_integral < 1/2 * np.max(r_integral) )
         
         z = 1/a - 1
