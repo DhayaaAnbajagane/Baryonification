@@ -66,8 +66,7 @@ class BaryonificationClass(object):
                         
                         #Require mass to always increase w/ radius
                         #And remove pts of DMO = DMB, improves large-scale convergence
-                        #And require at least 1e-5 difference else the interpolator breaks :/
-                        diff_mask = np.ones(len(M_DMB[i]), dtype = bool)
+                        #And require at least 1e-6 difference else the interpolator breaks :/
                         diff_mask = (np.diff(ln_DMB, prepend = 0) > 1e-5) & (np.diff(ln_DMO, prepend = 0) > 1e-5) 
                         diff_mask = diff_mask & (np.abs(ln_DMB - ln_DMO) > 1e-6) 
                                    
@@ -96,26 +95,26 @@ class BaryonificationClass(object):
         return 0
 
 
-    def displacements(self, x, M, a, c = None):
+    def displacements(self, r, M, a, c = None):
         
         if not hasattr(self, 'interp_d'):
             raise NameError("No Table created. Run setup_interpolator() method first")
 
         #Commenting out for now
-        #bounds = np.all((self.R_range[0] < x) & (self.R_range[1] > x))
-        #assert bounds, "Input x has limits (%0.2e, %0.2e). Rerun setup_interpolatr() with R_range = (x_min, x_max)" % (np.min(x), np.max(x)) 
+        #bounds = np.all((self.R_range[0] < r) & (self.R_range[1] > r))
+        #assert bounds, "Input x has limits (%0.2e, %0.2e). Rerun setup_interpolatr() with R_range = (r_min, r_max)" % (np.min(r), np.max(r)) 
         
         if self.use_concentration:
             assert c is not None, f"You asked for model to be built with concentration. But you set c = {c}"
             c_use = np.atleast_1d(c)
             
-        offset = np.zeros_like(x)
+        offset = np.zeros_like(r)
         R      = self.mass_def.get_radius(self.ccl_cosmo, np.atleast_1d(M), a)/a #in comoving Mpc
-        inside = (x > self.R_range[0]) & (x < self.epsilon_max*R)
+        inside = (r > self.R_range[0]) & (r < self.epsilon_max*R)
 
-        x = x[inside]
+        r = r[inside]
         
-        ones   = np.ones_like(x)
+        ones   = np.ones_like(r)
         z      = 1/a - 1
         z_in   = np.log(1 + z)*ones
         M_in   = np.log(M)*ones
@@ -123,10 +122,10 @@ class BaryonificationClass(object):
 
         if self.use_concentration:
             c_in = np.log(c)*ones
-            offset[inside] = self.interp_d((z_in, M_in, c_in, np.log(x), ))
+            offset[inside] = self.interp_d((z_in, M_in, c_in, np.log(r), ))
 
         else:
-            offset[inside] = self.interp_d((z_in, M_in, np.log(x), ))
+            offset[inside] = self.interp_d((z_in, M_in, np.log(r), ))
             
         return offset
 
@@ -145,11 +144,15 @@ class Baryonification3D(BaryonificationClass):
         rho  = model.real(self.ccl_cosmo, r_int, M, a, mass_def = mass_def)
         rho  = np.where(rho < 0, 0, rho) #Enforce non-zero densities
         M    = np.cumsum(4*np.pi*r_int**3 * rho * dlnr, axis = -1)
+        lnr  = np.log(r)
         
-        mask = np.isfinite(M) & (M > 0)
-        M    = np.clip(M, np.min(M[mask]), np.max(M[mask]))
-        M    = np.exp(interpolate.CubicSpline(np.log(r_int), np.log(M), axis = -1, extrapolate = False)(np.log(r)))
-
+        #Remove datapoints in profile where rho == 0 and then just interpolate
+        #across them. This helps deal with ringing profiles due to 
+        #fourier space issues, where profile could go negative sometimes
+        for M_i in range(M.shape[0]):
+            Mask   = (rho[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
+            M[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M[M_i])[Mask], extrapolate = False)(lnr) )
+            
         return M
 
 
@@ -169,9 +172,13 @@ class Baryonification2D(BaryonificationClass):
         Sigma = model.projected(self.ccl_cosmo, r_int, M, a, mass_def = mass_def) * a 
         Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
         M     = np.cumsum(2*np.pi*r_int**2 * Sigma * dlnr, axis = -1)
+        lnr   = np.log(r)
         
-        mask  = np.isfinite(M) & (M > 0)
-        M     = np.clip(M, np.min(M[mask]), np.max(M[mask]))
-        M     = np.exp(interpolate.CubicSpline(np.log(r_int), np.log(M), axis = -1, extrapolate = False)(np.log(r)))
-
+        #Remove datapoints in profile where Sigma == 0 and then just interpolate
+        #across them. This helps deal with ringing profiles due to 
+        #fourier space issues, where profile could go negative sometimes
+        for M_i in range(M.shape[0]):
+            Mask   = (Sigma[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
+            M[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M[M_i])[Mask], extrapolate = False)(lnr) )
+            
         return M

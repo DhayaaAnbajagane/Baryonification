@@ -50,8 +50,9 @@ class ConvolvedProfile(object):
         prof  = self.Profile.real(cosmo, r_fft, M, a, mass_def)
         
         k_out, Pk   = fftlog(r_fft, prof, 3, 0, self.fft_par['plaw_fourier'])
-        r_out, prof = fftlog(k_out, Pk * self.Pixel.real(k_out), 3, 0, self.fft_par['plaw_fourier'])
+        r_out, prof = fftlog(k_out, Pk * self.Pixel.real(k_out), 3, 0, self.fft_par['plaw_fourier'] + 1)
         
+        r    = np.clip(r, self.Pixel.size / 5, None) #Set minimum radius according to pixel, to prevent ringing on small-scale outputs
         prof = interpolate.CubicSpline(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
         prof = np.where(np.isnan(prof), 0, prof) * (2*np.pi)**3
         
@@ -77,8 +78,12 @@ class ConvolvedProfile(object):
         k_out, Pk   = fftlog(r_fft, prof, 2, 0, self.fft_par['plaw_fourier'] + 1)
         r_out, prof = fftlog(k_out, Pk * self.Pixel.projected(k_out), 2, 0, self.fft_par['plaw_fourier'] + 1)
         
-        if self.isHarmonic: r_out = r_out / a * D_A
-        
+        if self.isHarmonic: 
+            r_out = r_out / a * D_A
+            r     = np.clip(r, self.Pixel.size / 5 * D_A/a, None)
+        else:
+            r     = np.clip(r, self.Pixel.size / 5, None)
+            
         prof = interpolate.CubicSpline(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
         prof = np.where(np.isnan(prof), 0, prof) * (2*np.pi)**2
         
@@ -141,6 +146,7 @@ class HealPixel(object):
     def __init__(self, NSIDE):
         
         self.NSIDE      = NSIDE
+        self.size       = hp.nside2resol(NSIDE)
         self.isHarmonic = True
         
     
