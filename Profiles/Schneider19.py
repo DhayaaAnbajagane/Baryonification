@@ -501,7 +501,7 @@ class CollisionlessMatter(SchneiderProfiles):
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
         #due to the finite width oof the profile during iteration.
-        r_integral = np.geomspace(1e-6, 1000, 500)
+        r_integral = np.geomspace( np.min([1e-6, np.min(r_use) / 10]), np.max([1e3,  np.max(r_use) * 10]), 500)
         safe_range = (r_integral > 2 * np.min(r_integral) ) & (r_integral < 1/2 * np.max(r_integral) )
         
         z = 1/a - 1
@@ -523,21 +523,14 @@ class CollisionlessMatter(SchneiderProfiles):
         rho_cga    = self.Stars.real(cosmo, r_integral, M, a, mass_def)
         rho_gas    = self.Gas.real(cosmo, r_integral, M, a, mass_def)
 
-        #The ccl profile class removes the dimension of size 1
-        #we're adding it back in here in order to keep code general
-        if M_use.size == 1:
-            rho_i   = rho_i[None, :]
-            rho_cga = rho_cga[None, :]
-            rho_gas = rho_gas[None, :]
-            
         dlnr  = np.log(r_integral[1]) - np.log(r_integral[0])
         M_i   = 4 * np.pi * np.cumsum(r_integral**3 * rho_i   * dlnr, axis = -1)
         M_cga = 4 * np.pi * np.cumsum(r_integral**3 * rho_cga * dlnr, axis = -1)
         M_gas = 4 * np.pi * np.cumsum(r_integral**3 * rho_gas * dlnr, axis = -1)
         
-        ln_M_NFW = [interpolate.CubicSpline(np.log(r_integral), np.log(M_i[m_i]), axis = -1) for m_i in range(M_i.shape[0])]
-        ln_M_cga = [interpolate.CubicSpline(np.log(r_integral), np.log(M_cga[m_i]), axis = -1) for m_i in range(M_i.shape[0])]
-        ln_M_gas = [interpolate.CubicSpline(np.log(r_integral), np.log(M_gas[m_i]), axis = -1) for m_i in range(M_i.shape[0])]
+        ln_M_NFW = [interpolate.CubicSpline(np.log(r_integral), np.log(M_i[m_i])) for m_i in range(M_i.shape[0])]
+        ln_M_cga = [interpolate.CubicSpline(np.log(r_integral), np.log(M_cga[m_i])) for m_i in range(M_i.shape[0])]
+        ln_M_gas = [interpolate.CubicSpline(np.log(r_integral), np.log(M_gas[m_i])) for m_i in range(M_i.shape[0])]
 
         del M_cga, M_gas, rho_i, rho_cga, rho_gas
 
@@ -553,7 +546,7 @@ class CollisionlessMatter(SchneiderProfiles):
                 r_f  = r_integral*relaxation_fraction[m_i]
                 M_f  = f_clm[m_i]*M_i[m_i] + np.exp(ln_M_cga[m_i](np.log(r_f))) + np.exp(ln_M_gas[m_i](np.log(r_f)))
 
-                relaxation_fraction_new = self.a*((M_i[m_i]/M_f)**self.n - 1) + 1
+                relaxation_fraction_new = self.a*( (M_i[m_i]/M_f)**self.n - 1 ) + 1
 
                 diff     = relaxation_fraction_new/relaxation_fraction[m_i] - 1
                 abs_diff = np.abs(diff)
