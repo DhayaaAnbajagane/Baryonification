@@ -42,8 +42,8 @@ class ConvolvedProfile(object):
     
     def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
-        r_min = np.min(r) * self.fft_par['padding_lo_fftlog']
-        r_max = np.max(r) * self.fft_par['padding_hi_fftlog']
+        r_min = np.min([np.min(r) * self.fft_par['padding_lo_fftlog'], 1e-8])
+        r_max = np.max([np.max(r) * self.fft_par['padding_hi_fftlog'], 1e3])
         n     = self.fft_par['n_per_decade'] * np.int32(np.log10(r_max/r_min))
         
         r_fft = np.geomspace(r_min, r_max, n)
@@ -66,8 +66,8 @@ class ConvolvedProfile(object):
             assert a < 1, f"You cannot set a = 1, z = 0 when computing harmonic sky projections"
             D_A = ccl.background.angular_diameter_distance(cosmo, a)
             
-        r_min = np.min(r) * self.fft_par['padding_lo_fftlog']
-        r_max = np.max(r) * self.fft_par['padding_hi_fftlog']
+        r_min = np.min([np.min(r) * self.fft_par['padding_lo_fftlog'], 1e-8])
+        r_max = np.max([np.max(r) * self.fft_par['padding_hi_fftlog'], 1e3])
         n     = self.fft_par['n_per_decade'] * np.int32(np.log10(r_max/r_min))
         
         r_fft = np.geomspace(r_min, r_max, n)
@@ -137,10 +137,12 @@ class HealPixel(object):
     
     We use an analytic profile -- the Gaussian beam -- instead of the
     inbuilt pixel window in healpix. This is because the latter only
-    exists up to 3*NSIDE - 1 whereas for stabel FFTlogs, we want a smooth
+    exists up to 3*NSIDE - 1 whereas for stable FFTlogs, we want a smooth
     window function to large ell ranges. The Gaussian beam, with a FWHM that
     is 1/sqrt(2) smaller is similar to the healpix pixel window with <0.1%
-    for most scales and 1% at the smallest scales.
+    for most scales and 1% at the smallest scales. This is likely fine given
+    the beam is already an approximation of the actual pixel shape (i.e. it
+    averages over the m-modes per ell).
     """
     
     def __init__(self, NSIDE):
