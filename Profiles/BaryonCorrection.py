@@ -7,7 +7,7 @@ from scipy import interpolate
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, ccl_cosmo, R_range = [1e-3, 1e2], N_samples = 500, epsilon_max = 20, use_concentration = False,
+    def __init__(self, DMO, DMB, ccl_cosmo, N_samples = 500, epsilon_max = 20, use_concentration = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.DMO = DMO
@@ -21,7 +21,6 @@ class BaryonificationClass(object):
         self.DMB.set_parameter('cutoff', 1000)
         
         self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
-        self.R_range     = R_range
         self.epsilon_max = epsilon_max
         self.N_samples   = N_samples
         self.mass_def    = mass_def
@@ -33,14 +32,17 @@ class BaryonificationClass(object):
         raise NotImplementedError("Implement a get_masses() method first")
 
 
-    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, c_min = 1, c_max = 20,
-                           N_samples_Mass = 30, N_samples_z = 30, N_samples_c = 30, 
+    def setup_interpolator(self, 
+                           z_min = 1e-2, z_max = 5, N_samples_z = 30, 
+                           M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, 
+                           R_min = 1e-3, R_max = 1e2, N_samples_R = 100, 
+                           c_min = 1, c_max = 20, N_samples_c = 30, 
                            z_linear_sampling = False, verbose = True):
 
         M_range = np.geomspace(M_min, M_max, N_samples_Mass)
+        r       = np.geomspace(R_min, R_max, N_samples_R)
         z_range = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
         c_range = np.linspace(c_min, c_max, N_samples_c)
-        r       = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr    = np.log(r[1]) - np.log(r[0])
 
         if not self.use_concentration: c_range = np.zeros(1)
@@ -110,7 +112,7 @@ class BaryonificationClass(object):
             
         offset = np.zeros_like(r)
         R      = self.mass_def.get_radius(self.ccl_cosmo, np.atleast_1d(M), a)/a #in comoving Mpc
-        inside = (r > self.R_range[0]) & (r < self.epsilon_max*R)
+        inside = (r < self.epsilon_max*R)
 
         r = r[inside]
         
@@ -136,24 +138,30 @@ class Baryonification3D(BaryonificationClass):
         
         #Make sure the min/max does not mess up the integral
         #Adding some 20% buffer just in case
-        r_min = np.min([np.min(r), 1e-5])
-        r_max = np.max([np.max(r), 100])
+        r_min = np.min([np.min(r), 1e-6])
+        r_max = np.max([np.max(r), 1000])
         r_int = np.geomspace(r_min/1.2, r_max*1.2, 500)
         
-        dlnr = np.log(r_int[1]/r_int[0])
-        rho  = model.real(self.ccl_cosmo, r_int, M, a, mass_def = mass_def)
-        rho  = np.where(rho < 0, 0, rho) #Enforce non-zero densities
-        M    = np.cumsum(4*np.pi*r_int**3 * rho * dlnr, axis = -1)
-        lnr  = np.log(r)
+        dlnr  = np.log(r_int[1]/r_int[0])
+        rho   = model.real(self.ccl_cosmo, r_int, M, a, mass_def = mass_def)
+        rho   = np.where(rho < 0, 0, rho) #Enforce non-zero densities
         
+        if isinstance(M, (float, int) ): rho = rho[None, :]
+            
+        M_enc = np.cumsum(4*np.pi*r_int**3 * rho * dlnr, axis = -1)
+        lnr   = np.log(r)
+        
+        M_f   = np.zeros([M_enc.shape[0], r.size])
         #Remove datapoints in profile where rho == 0 and then just interpolate
         #across them. This helps deal with ringing profiles due to 
         #fourier space issues, where profile could go negative sometimes
-        for M_i in range(M.shape[0]):
-            Mask   = (rho[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
-            M[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M[M_i])[Mask], extrapolate = False)(lnr) )
+        for M_i in range(M_enc.shape[0]):
+            Mask     = (rho[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
+            M_f[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
+        
+        if isinstance(M, (float, int) ): M_f = np.squeeze(M_f, axis = 0)
             
-        return M
+        return M_f
 
 
 class Baryonification2D(BaryonificationClass):
@@ -162,8 +170,8 @@ class Baryonification2D(BaryonificationClass):
         
         #Make sure the min/max does not mess up the integral
         #Adding some 20% buffer just in case
-        r_min = np.min([np.min(r), 1e-5])
-        r_max = np.max([np.max(r), 100])
+        r_min = np.min([np.min(r), 1e-6])
+        r_max = np.max([np.max(r), 1000])
         r_int = np.geomspace(r_min/1.5, r_max*1.5, 500)
         
         #The scale fac. is used in Sigma cause the projection in ccl is
@@ -171,14 +179,21 @@ class Baryonification2D(BaryonificationClass):
         dlnr  = np.log(r_int[1]/r_int[0])
         Sigma = model.projected(self.ccl_cosmo, r_int, M, a, mass_def = mass_def) * a 
         Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
-        M     = np.cumsum(2*np.pi*r_int**2 * Sigma * dlnr, axis = -1)
+        
+        if isinstance(M, (float, int) ): Sigma = Sigma[None, :]
+        
+        M_enc = np.cumsum(2*np.pi*r_int**2 * Sigma * dlnr, axis = -1)
         lnr   = np.log(r)
         
+        
+        M_f  = np.zeros([M_enc.shape[0], r.size])
         #Remove datapoints in profile where Sigma == 0 and then just interpolate
         #across them. This helps deal with ringing profiles due to 
         #fourier space issues, where profile could go negative sometimes
-        for M_i in range(M.shape[0]):
-            Mask   = (Sigma[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
-            M[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M[M_i])[Mask], extrapolate = False)(lnr) )
+        for M_i in range(M_enc.shape[0]):
+            Mask     = (Sigma[M_i] > 0) & (np.isfinite(M_enc[M_i])) #Keep only finite points, and ones with increasing density
+            M_f[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
+        
+        if isinstance(M, (float, int) ): M_f = np.squeeze(M_f, axis = 0)
             
-        return M
+        return M_f
