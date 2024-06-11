@@ -340,7 +340,7 @@ class Stars(SchneiderProfiles):
         eta_cga = self.eta + self.eta_delta
         tau_cga = self.tau + self.tau_delta
         
-        f_cga  = self.A * ((M_use/self.M1)**tau_cga  + (M_use/self.M1)**eta_cga)**-1
+        f_cga  = 2 * self.A * ((M_use/self.M1)**tau_cga  + (M_use/self.M1)**eta_cga)**-1
 
         R_h   = self.epsilon_h * R
 
@@ -378,7 +378,7 @@ class Gas(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        f_star = self.A * ((M_use/self.M1)**self.tau + (M_use/self.M1)**self.eta)**-1
+        f_star = 2 * self.A * ((M_use/self.M1)**self.tau + (M_use/self.M1)**self.eta)**-1
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
         f_gas  = f_bar - f_star
         f_gas  = f_gas[:, None]
@@ -511,8 +511,8 @@ class CollisionlessMatter(SchneiderProfiles):
         eta_cga = self.eta + self.eta_delta
         tau_cga = self.tau + self.tau_delta
         
-        f_star = self.A * ((M_use/self.M1)**self.tau + (M_use/self.M1)**self.eta)**-1
-        f_cga  = self.A * ((M_use/self.M1)**tau_cga  + (M_use/self.M1)**eta_cga)**-1
+        f_star = 2 * self.A * ((M_use/self.M1)**self.tau + (M_use/self.M1)**self.eta)**-1
+        f_cga  = 2 * self.A * ((M_use/self.M1)**tau_cga  + (M_use/self.M1)**eta_cga)**-1
         f_star = f_star[:, None]
         f_cga  = f_cga[:, None]
         f_sga  = f_star - f_cga
