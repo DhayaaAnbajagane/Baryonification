@@ -127,11 +127,11 @@ class HaloNDCatalog(object):
         M = self.cat['M'][key]
         
         other = {}
-        for key in self.cat.dtype.names:
-            if key not in ['x', 'y', 'z', 'M']:
-                other[key] = self.cat[key]
+        for k in self.cat.dtype.names:
+            if k not in ['x', 'y', 'z', 'M']:
+                other[k] = self.cat[k][key]
         
-        return HaloNDCatalog(x, y, z, M, c, self.redshift, self.cosmo, **other)
+        return HaloNDCatalog(x, y, z, M, self.redshift, self.cosmo, **other)
     
     
     def __str__(self):
