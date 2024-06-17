@@ -48,7 +48,8 @@ class BaryonificationClass(object):
                 for k in range(c_range.size):
                     
                     if self.use_concentration:
-                        self.DMO.cdelta, self.DMB.cdelta = c_range[k], c_range[k]
+                        self.DMO.set_parameter('cdelta', c_range[k])
+                        self.DMB.set_parameter('cdelta', c_range[k])
                     else:
                         assert self.DMO.cdelta is None, "use_concentration = False, so set DMO model to have cdelta = None"
                         assert self.DMB.cdelta is None, "use_concentration = False, so set DMB model to have cdelta = None"
