@@ -172,7 +172,7 @@ class NonThermalFracGreen20(SchneiderProfiles):
         x = r_use/R200m[:, None]
 
         a, b, c, d, e, f = 0.495, 0.719, 1.417,-0.166, 0.265, -2.116
-        nu_M = M_use/ccl.sigmaM(cosmo, M200m, a)
+        nu_M = 1.686/ccl.sigmaM(cosmo, M200m, a)
         nu_M = nu_M[:, None]
         nth  = 1 - a * (1 + np.exp(-(x/b)**c)) * (nu_M/4.1)**(d/(1 + (x/e)**f))
         prof = nth #Rename just for consistency sake
