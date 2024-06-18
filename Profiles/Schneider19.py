@@ -519,9 +519,9 @@ class CollisionlessMatter(SchneiderProfiles):
         f_clm  = 1 - cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m + f_sga
         
         
-        rho_i      = self.DarkMatter.real(cosmo, r_integral, M, a, mass_def)
-        rho_cga    = self.Stars.real(cosmo, r_integral, M, a, mass_def)
-        rho_gas    = self.Gas.real(cosmo, r_integral, M, a, mass_def)
+        rho_i      = self.DarkMatter.real(cosmo, r_integral, M_use, a, mass_def)
+        rho_cga    = self.Stars.real(cosmo, r_integral, M_use, a, mass_def)
+        rho_gas    = self.Gas.real(cosmo, r_integral, M_use, a, mass_def)
 
         dlnr  = np.log(r_integral[1]) - np.log(r_integral[0])
         M_i   = 4 * np.pi * np.cumsum(r_integral**3 * rho_i   * dlnr, axis = -1)
