@@ -163,5 +163,19 @@ class HealPixel(object):
         beam = np.exp(-k*(1 + k)/2 * sig**2)
         
         return beam
+       
+ 
+class NoPix(object):
+    """
+    A class for generating no pixel (no convolving/smoothing).
+    Used just for test purposes.
+    """
+    
+    def __init__(self):
+        pass
         
-        
+    def real(self, k):
+        return np.ones_like(k)
+                
+    def projected(self, k):
+        return np.ones_like(k)       
