@@ -471,7 +471,7 @@ class ShockedGas(Gas):
 
 class CollisionlessMatter(SchneiderProfiles):
     
-    def __init__(self, gas = None, stars = None, darkmatter = None, max_iter = 10, reltol = 1e-2,**kwargs):
+    def __init__(self, gas = None, stars = None, darkmatter = None, max_iter = 10, reltol = 1e-2, r_min_int = 1e-8, r_max_int = 1e5, r_steps = 5000, **kwargs):
         
         self.Gas   = gas
         self.Stars = stars
@@ -489,6 +489,10 @@ class CollisionlessMatter(SchneiderProfiles):
             
         self.max_iter   = max_iter
         self.reltol     = reltol
+
+        self.r_min_int  = r_min_int
+        self.r_max_int  = r_max_int
+        self.r_steps    = r_steps
         
         super().__init__(**kwargs)
         
@@ -501,7 +505,9 @@ class CollisionlessMatter(SchneiderProfiles):
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
         #due to the finite width oof the profile during iteration.
-        r_integral = np.geomspace( np.min([1e-6, np.min(r_use) / 10]), np.max([1e3,  np.max(r_use) * 10]), 500)
+        #Radius boundary is very large, I found that worked best without throwing edgecases
+        #especially when doing FFTlog transforms
+        r_integral = np.geomspace(self.r_min_int, self.r_max_int, self.r_steps)
         safe_range = (r_integral > 2 * np.min(r_integral) ) & (r_integral < 1/2 * np.max(r_integral) )
         
         z = 1/a - 1
