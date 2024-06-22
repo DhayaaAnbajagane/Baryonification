@@ -3,12 +3,15 @@ import numpy as np
 import pyccl as ccl
 from tqdm import tqdm
 from scipy import interpolate
+import warnings
+from itertools import product
+
+from ..utils.Tabulate import _set_parameter
 
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, ccl_cosmo, N_samples = 500, epsilon_max = 20, use_concentration = False,
-                 mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def __init__(self, DMO, DMB, cosmo, N_samples = 500, epsilon_max = 20, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.DMO = DMO
         self.DMB = DMB
@@ -20,11 +23,10 @@ class BaryonificationClass(object):
         self.DMO.set_parameter('cutoff', 1000)
         self.DMB.set_parameter('cutoff', 1000)
         
-        self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
+        self.cosmo       = cosmo #CCL cosmology instance
         self.epsilon_max = epsilon_max
         self.N_samples   = N_samples
         self.mass_def    = mass_def
-        self.use_concentration = use_concentration
 
 
     def get_masses(self, model, r, M, a, mass_def):
@@ -33,36 +35,35 @@ class BaryonificationClass(object):
 
 
     def setup_interpolator(self, 
-                           z_min = 1e-2, z_max = 5, N_samples_z = 30, 
+                           z_min = 1e-2, z_max = 5, N_samples_z = 30, z_linear_sampling = False, 
                            M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, 
                            R_min = 1e-3, R_max = 1e2, N_samples_R = 100, 
-                           c_min = 1, c_max = 20, N_samples_c = 30, 
-                           z_linear_sampling = False, verbose = True):
+                           other_params = {}, verbose = True):
 
-        M_range = np.geomspace(M_min, M_max, N_samples_Mass)
-        r       = np.geomspace(R_min, R_max, N_samples_R)
-        z_range = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
-        c_range = np.linspace(c_min, c_max, N_samples_c)
-        dlnr    = np.log(r[1]) - np.log(r[0])
-
-        if not self.use_concentration: c_range = np.zeros(1)
-        d_interp = np.zeros([z_range.size, M_range.size, c_range.size, r.size])
+        M_range  = np.geomspace(M_min, M_max, N_samples_Mass)
+        r        = np.geomspace(R_min, R_max, N_samples_R)
+        z_range  = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
+        p_keys   = list(other_params.keys()); setattr(self, 'p_keys', p_keys)
+        d_interp = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys])
+        dlnr     = np.log(r[1]) - np.log(r[0])
         
-        with tqdm(total = z_range.size * c_range.size, desc = 'Building Table', disable = not verbose) as pbar:
+        #If other_params is empty then iterator will be empty and the code still works fine
+        iterator = [p for p in product(*[np.arange(other_params[k].size) for k in p_keys])]
+        
+        with tqdm(total = d_interp.size//(M_range.size*r.size), desc = 'Building Table', disable = not verbose) as pbar:
             for j in range(z_range.size):
                 
-                for k in range(c_range.size):
+                for c in iterator:
                     
-                    if self.use_concentration:
-                        self.DMO.set_parameter('cdelta', c_range[k])
-                        self.DMB.set_parameter('cdelta', c_range[k])
-                    else:
-                        assert self.DMO.cdelta is None, "use_concentration = False, so set DMO model to have cdelta = None"
-                        assert self.DMB.cdelta is None, "use_concentration = False, so set DMB model to have cdelta = None"
+                    #Modify the model input params so that they are run with the right parameters
+                    for k_i in range(len(p_keys)):
+                        _set_parameter(self.DMO, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
+                        _set_parameter(self.DMB, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
+                    
                     
                     M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
                     M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
-
+                    
                     for i in range(M_range.size):
                         ln_DMB    = np.log(M_DMB[i])
                         ln_DMO    = np.log(M_DMO[i])
@@ -72,65 +73,89 @@ class BaryonificationClass(object):
                         #And require at least 1e-6 difference else the interpolator breaks :/
                         diff_mask = (np.diff(ln_DMB, prepend = 0) > 1e-5) & (np.diff(ln_DMO, prepend = 0) > 1e-5) 
                         diff_mask = diff_mask & (np.abs(ln_DMB - ln_DMO) > 1e-6) 
+                        
+                        #If we have enough usable mass values, then proceed as usual
+                        #This generally breaks for very small halos, where projection
+                        #can be catastrophicall broken (eg. only negative densities)
+                        if diff_mask.sum() > 5:
                                    
-                        interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
-                        interp_DMO = interpolate.CubicSpline(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
+                            interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
+                            interp_DMO = interpolate.CubicSpline(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
+
+                            offset = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
+                            offset = np.where(np.isfinite(offset), offset, 0)
                         
-                        offset = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
-                        offset = np.where(np.isfinite(offset), offset, 0)
+                        #If broken, then these halos contribute nothing to the displacement function.
+                        #Just provide a warning saying this is happening
+                        else:
+                            offset = np.zeros_like(r)
+                            warn_text = (f"Displacement function for halo with M = {M_range[i]} failed to compute." 
+                                         "Defaulting to d = 0. Considering changing the fft precision params in the CCL profile:"
+                                         "padding_lo_fftlog, padding_hi_fftlog, or n_per_decade")
+                            warnings.warn(warn_text, UserWarning)
                         
-                        d_interp[j, i, k, :] = offset
+                        #Build a custom index into the array
+                        index = tuple([j, i, slice(None)] + list(c))
+                        d_interp[index] = offset
                             
                     pbar.update(1)
 
 
-        if self.use_concentration:
-            input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(c_range), np.log(r))
-        else:
-            input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
+        input_grid = tuple([np.log(1 + z_range), np.log(M_range), np.log(r)] + [other_params[k] for k in p_keys])
+
+        self.raw_input_d = d_interp
+        self.raw_input_z_range = np.log(1 + z_range)
+        self.raw_input_M_range = np.log(M_range)
+        self.raw_input_r_range = np.log(r)
+        for k in other_params.keys(): setattr(self, 'raw_input_%s_range' % k, other_params[k]) #Save other raw inputs too
             
-            #Also squeeze the output to remove the redundant axis, since we don't extend in 
-            #the concentration direction anymore
-            d_interp = np.squeeze(d_interp, axis = 2)
-        
-        self.interp_d = interpolate.RegularGridInterpolator(input_grid_1, d_interp, bounds_error = False, fill_value = np.NaN)        
+        self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.NaN)        
 
         return 0
 
+    
+    def _readout(self, r, M, a, **kwargs):
+        
+        table = self.interp_d #The interpolation table to use
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+        a_use = np.atleast_1d(a)
+        z_use = 1/a_use - 1
+        
+        displ = np.zeros([M_use.size, r_use.size])
+        empty = np.ones_like(r_use)
+        z_in  = np.log(1/a)*empty #This is log(1 + z)
+        r_in  = np.log(r_use)
+        k_in  = [kwargs[k] * empty for k in kwargs.keys()]
+        
+        for i in range(M_use.size):
+            M_in  = np.log(M_use[i])*empty
+            p_in  = tuple([z_in, M_in, r_in] + k_in)
+            displ[i] = table(p_in)
+            
+            R        = self.mass_def.get_radius(self.cosmo, np.atleast_1d(M), a)/a #in comoving Mpc
+            inside   = (r < self.epsilon_max*R)
+            displ[i] = np.where(inside, displ, 0) #Set large-scale displacements to 0
+            
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            displ = np.squeeze(displ, axis=-1)
+        if np.ndim(M) == 0:
+            displ = np.squeeze(displ, axis=0)
+            
+        return displ
 
-    def displacements(self, r, M, a, c = None):
+    
+    def displacement(self, r, M, a, **kwargs):
         
         if not hasattr(self, 'interp_d'):
             raise NameError("No Table created. Run setup_interpolator() method first")
-
-        #Commenting out for now
-        #bounds = np.all((self.R_range[0] < r) & (self.R_range[1] > r))
-        #assert bounds, "Input x has limits (%0.2e, %0.2e). Rerun setup_interpolatr() with R_range = (r_min, r_max)" % (np.min(r), np.max(r)) 
-        
-        if self.use_concentration:
-            assert c is not None, f"You asked for model to be built with concentration. But you set c = {c}"
-            c_use = np.atleast_1d(c)
             
-        offset = np.zeros_like(r)
-        R      = self.mass_def.get_radius(self.ccl_cosmo, np.atleast_1d(M), a)/a #in comoving Mpc
-        inside = (r < self.epsilon_max*R)
-
-        r = r[inside]
+        for k in self.p_keys:
+            assert k in kwargs.keys(), "Need to provide %s as input into `displacement'. Table was built with this." % k
         
-        ones   = np.ones_like(r)
-        z      = 1/a - 1
-        z_in   = np.log(1 + z)*ones
-        M_in   = np.log(M)*ones
-        
+        return self._readout(r, M, a, **kwargs)
 
-        if self.use_concentration:
-            c_in = np.log(c)*ones
-            offset[inside] = self.interp_d((z_in, M_in, c_in, np.log(r), ))
-
-        else:
-            offset[inside] = self.interp_d((z_in, M_in, np.log(r), ))
-            
-        return offset
 
 
 class Baryonification3D(BaryonificationClass):
@@ -144,7 +169,7 @@ class Baryonification3D(BaryonificationClass):
         r_int = np.geomspace(r_min/1.2, r_max*1.2, 500)
         
         dlnr  = np.log(r_int[1]/r_int[0])
-        rho   = model.real(self.ccl_cosmo, r_int, M, a, mass_def = mass_def)
+        rho   = model.real(self.cosmo, r_int, M, a, mass_def = mass_def)
         rho   = np.where(rho < 0, 0, rho) #Enforce non-zero densities
         
         if isinstance(M, (float, int) ): rho = rho[None, :]
@@ -178,7 +203,7 @@ class Baryonification2D(BaryonificationClass):
         #The scale fac. is used in Sigma cause the projection in ccl is
         #done in comoving coords not physical coords
         dlnr  = np.log(r_int[1]/r_int[0])
-        Sigma = model.projected(self.ccl_cosmo, r_int, M, a, mass_def = mass_def) * a 
+        Sigma = model.projected(self.cosmo, r_int, M, a, mass_def = mass_def) * a 
         Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
         
         if isinstance(M, (float, int) ): Sigma = Sigma[None, :]
