@@ -5,8 +5,6 @@ from operator import add, mul, sub, truediv, pow, neg, pos, abs
 import warnings
 
 from scipy import interpolate
-from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
-from astropy import units as u
 from ..utils.Tabulate import _set_parameter
 
 

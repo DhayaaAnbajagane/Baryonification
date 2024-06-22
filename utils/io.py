@@ -1,5 +1,4 @@
 import numpy as np
-from astropy.io import fits
 import healpy as hp
 import pyccl as ccl
 
@@ -16,15 +15,6 @@ class HaloLightConeCatalog(object):
         if (path is None) & ((ra is None) | (dec is None) | (M is None) |(z is None)):
 
             raise ValueError("Need to provide either path to file, or provide all of ra, dec, halo mass and halo redshift")
-
-        elif isinstance(path, str):
-
-            if ('npy' in path) or ('npz' in path):
-                cat = np.load(path)
-            elif 'fits' in path:
-                cat = fits.open(path)[1].data
-            else:
-                raise ValueError("Please provide a path to one of npy, npz, or fits Table files")
 
         elif (isinstance(ra, np.ndarray) & isinstance(dec, np.ndarray) &
               isinstance(z, np.ndarray)  & isinstance(M, np.ndarray)):

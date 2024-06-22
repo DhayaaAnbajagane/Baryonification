@@ -3,10 +3,7 @@ import numpy as np
 import pyccl as ccl
 from tqdm import tqdm
 from itertools import product
-
 from scipy import interpolate
-from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
-from astropy import units as u
 
 
 def _set_parameter(obj, key, value):
@@ -207,7 +204,7 @@ class ParamTabulatedProfile(object):
         
         for i in range(M_use.size):
             M_in  = np.log(M_use[i])*empty
-            p_in  = tuple([z_in, M_in, r_in, ] + k_in)
+            p_in  = tuple([z_in, M_in, r_in] + k_in)
             prof[i] = table(p_in)
             prof[i] = np.exp(prof[i])
             

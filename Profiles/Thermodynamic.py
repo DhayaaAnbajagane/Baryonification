@@ -1,10 +1,7 @@
 
 import numpy as np
 import pyccl as ccl
-
 from scipy import interpolate
-from astropy.cosmology import z_at_value, FlatLambdaCDM, FlatwCDM
-from astropy import units as u
 
 from ..Profiles.Schneider19 import model_params, SchneiderProfiles, Gas, DarkMatterBaryon, TwoHalo
 
