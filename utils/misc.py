@@ -18,7 +18,10 @@ def generate_operator_method(op, reflect = False):
             assert isinstance(other, (int, float, ccl.halos.profiles.HaloProfile)), f"Object must be int/float/SchneiderProfile but is type '{type(other).__name__}'."
 
 
-            Combined = self.__class__(**self.model_params, xi_mm = self.xi_mm, R_range = self.R_range)
+            Combined = self.__class__(**self.model_params, xi_mm = self.xi_mm, 
+                                      padding_lo_proj = self.padding_lo_proj, 
+                                      padding_hi_proj = self.padding_hi_proj, 
+                                      n_per_decade_proj = self.n_per_decade_proj,)
 
             def __tmp_real__(cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -66,7 +69,10 @@ def generate_operator_method(op, reflect = False):
         def operator_method(self):
             
             Base     = self.__class__.__bases__[0] #Get the base class of the profile (Normally, SchneiderProfiles)
-            Combined = self.__class__(**self.model_params, xi_mm = self.xi_mm, R_range = self.R_range)
+            Combined = self.__class__(**self.model_params, xi_mm = self.xi_mm, 
+                                      padding_lo_proj = self.padding_lo_proj, 
+                                      padding_hi_proj = self.padding_hi_proj, 
+                                      n_per_decade_proj = self.n_per_decade_proj)
 
             def __tmp_real__(cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
