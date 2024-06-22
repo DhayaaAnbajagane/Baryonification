@@ -174,7 +174,7 @@ class BaryonifyShell(DefaultRunner):
             r_sep  = np.sqrt(np.sum(diff**2, axis = 1))
             
             #Compute the displacement needed
-            offset = self.model.displacements(r_sep/a_j, M_j, a_j, c = c_j) * a_j
+            offset = self.model.displacement(r_sep/a_j, M_j, a_j, c = c_j) * a_j
             offset = offset[:, None] * (diff/r_sep[:, None]) #Add direction
             offset = np.where(np.isfinite(offset), offset, 0) #If offset is weird, set it to 0
             

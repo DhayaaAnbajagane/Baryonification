@@ -132,7 +132,7 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
                 y_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['y'][inds] - y_j)/d
 
                 #Compute the displacement needed
-                offset = self.model.displacements(d, M_j, a_j) * a_j
+                offset = self.model.displacement(d, M_j, a_j) * a_j
                 offset = np.where(np.isfinite(offset), offset, 0)
                 tot_offsets[inds] += np.vstack([offset*x_hat, offset*y_hat]).T
                 
@@ -149,7 +149,7 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
                 z_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['z'][inds] - z_j)/d
 
                 #Compute the displacement needed
-                offset = self.model.displacements(d, M_j, a_j) * a_j
+                offset = self.model.displacement(d, M_j, a_j) * a_j
                 offset = np.where(np.isfinite(offset), offset, 0)
                 tot_offsets[inds] += np.vstack([offset*x_hat, offset*y_hat, offset*z_hat]).T
                 

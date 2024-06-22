@@ -280,7 +280,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                     r_grid = np.sqrt(x_grid_ell**2 + y_grid_ell**2).reshape(x_grid_ell.shape)
 
                 #Compute the displacement needed and add it to pixel offsets
-                offset = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
+                offset = self.model.displacement(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
                 pix_offsets[inds, 0] += offset * x_hat.flatten()
                 pix_offsets[inds, 1] += offset * y_hat.flatten()
                 
@@ -320,7 +320,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
                 
                 #Compute the displacement needed    
-                offset = self.model.displacements(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
+                offset = self.model.displacement(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
                 pix_offsets[inds, 0] += offset * x_hat.flatten()
                 pix_offsets[inds, 1] += offset * y_hat.flatten()
                 pix_offsets[inds, 2] += offset * z_hat.flatten()
