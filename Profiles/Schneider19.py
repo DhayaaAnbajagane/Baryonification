@@ -25,10 +25,12 @@ model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
                
                ]
 
+projection_params = ['proj_rmin', 'proj_rmax', 'proj_n_per_decade']
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
-    def __init__(self, xi_mm = None, R_range = [1e-10, 1e10], use_fftlog_projection = False, **kwargs):
+    def __init__(self, xi_mm = None, use_fftlog_projection = False, 
+                 padding_lo_proj = 0.1, padding_hi_proj = 10, n_per_decade_proj = 10, **kwargs):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
@@ -42,6 +44,10 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
             else:
                 setattr(self, m, None)
                     
+        #Some params for handling the realspace projection
+        self.padding_lo_proj   = padding_lo_proj
+        self.padding_hi_proj   = padding_hi_proj
+        self.n_per_decade_proj = n_per_decade_proj 
         
         #Import all other parameters from the base CCL Profile class
         super(SchneiderProfiles, self).__init__()
@@ -49,9 +55,6 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         #Function that returns correlation func at different radii
         self.xi_mm     = xi_mm
 
-        #Sets the range that we compute profiles too (if we need to do any numerical stuff)
-        self.R_range = R_range
-        
         
         #Sets the cutoff scale of all profiles, in comoving Mpc
         #This should be the box side length
@@ -121,9 +124,9 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         #Integral limits
-        int_min = self.precision_fftlog['padding_lo_fftlog']*np.min(r_use)
-        int_max = self.precision_fftlog['padding_hi_fftlog']*np.max(r_use)
-        int_N   = self.precision_fftlog['n_per_decade'] * np.int32(np.log10(int_max/int_min))
+        int_min = self.padding_lo_proj   * np.min(r_use)
+        int_max = self.padding_hi_proj   * np.max(r_use)
+        int_N   = self.n_per_decade_proj * np.int32(np.log10(int_max/int_min))
         
         #If cutoff was passed, then rewrite the integral max limit
         if self.cutoff is not None:
@@ -143,11 +146,14 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
         proj_prof = np.zeros([M_use.size, r_use.size])
 
+        #This nested loop saves on memory, and vectorizing the calculation doesn't really
+        #speed things up, so better to keep the loop this way.
         for i in range(M_use.size):
             for j in range(r_use.size):
 
                 proj_prof[i, j] = 2*np.trapz(np.interp(np.sqrt(r_integral**2 + r_use[j]**2), r_integral, prof[i]), r_integral)
 
+        
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
             proj_prof = np.squeeze(proj_prof, axis=-1)
@@ -167,7 +173,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         string = f"("
         for m in model_params:
             string += f"{m} = {self.__dict__[m]}, "
-        string += f"xi_mm = {self.xi_mm}, R_range = {self.R_range})"
+        string += f"xi_mm = {self.xi_mm})"
         return string
         
     def __str_prf__(self):
