@@ -18,6 +18,7 @@ def regrid_pixels_2D(grid, pix_positions, pix_values):
 
         N = grid.shape[0]
         x_start, y_start = pix_pos
+        x_start, y_start = x_start % N, y_start % N #To handle edge-case where offset >> Lbox_sim
         x_end, y_end     = x_start + 1, y_start + 1
 
         for i in range(N):
@@ -47,6 +48,7 @@ def regrid_pixels_3D(grid, pix_positions, pix_values):
 
         N = grid.shape[0]
         x_start, y_start, z_start = pix_pos
+        x_start, y_start, z_start = x_start % N, y_start % N, z_start % N #To handle edge-case where offset >> Lbox_sim
         x_end, y_end, z_end       = x_start + 1, y_start + 1, z_start + 1
 
         for i in range(N):
@@ -229,7 +231,9 @@ class BaryonifyGrid(DefaultRunnerGrid):
             y_j = self.HaloNDCatalog.cat['y'][j]
             z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
             
-            c_j = self.HaloNDCatalog.cat['c'][j] if self.model.use_concentration else None
+            #Other properties
+            keys = vars(self.model).get('p_keys', []) #Check if model has property keys
+            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} 
 
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
@@ -280,7 +284,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                     r_grid = np.sqrt(x_grid_ell**2 + y_grid_ell**2).reshape(x_grid_ell.shape)
 
                 #Compute the displacement needed and add it to pixel offsets
-                offset = self.model.displacement(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
+                offset = self.model.displacement(r_grid.flatten()/a_j, M_j, a_j, **o_j) * a_j / res
                 pix_offsets[inds, 0] += offset * x_hat.flatten()
                 pix_offsets[inds, 1] += offset * y_hat.flatten()
                 
@@ -320,7 +324,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
                 
                 #Compute the displacement needed    
-                offset = self.model.displacement(r_grid.flatten()/a_j, M_j, a_j, c = c_j) * a_j / res
+                offset = self.model.displacement(r_grid.flatten()/a_j, M_j, a_j, **o_j) * a_j / res
                 pix_offsets[inds, 0] += offset * x_hat.flatten()
                 pix_offsets[inds, 1] += offset * y_hat.flatten()
                 pix_offsets[inds, 2] += offset * z_hat.flatten()
@@ -356,7 +360,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
         #Do a quick check that the sum is the same
         new_sum = np.sum(new_map)
         old_sum = np.sum(orig_map_flat)
-        assert np.isclose(new_sum, old_sum), "ERROR in pixel regridding, sum(new_map) [%0.2e] != sum(oldmap) [%0.2e]" % (new_sum, old_sum)
+        assert np.isclose(new_sum, old_sum), "ERROR in pixel regridding, sum(new_map) [%0.14e] != sum(oldmap) [%0.14e]" % (new_sum, old_sum)
             
         self.output(new_map)
 
@@ -397,6 +401,10 @@ class PaintProfilesGrid(DefaultRunnerGrid):
             y_j = self.HaloNDCatalog.cat['y'][j]
             z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
 
+            #Other properties
+            keys = vars(self.model).get('p_keys', []) #Check if model has property keys
+            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} 
+            
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
 
@@ -476,7 +484,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
                                      z_grid_ell**2/cr_j**2).reshape(x_grid_ell.shape)
 
         
-            Painting = profile(cosmo, r_grid.flatten()/a_j, M_j, a_j)
+            Painting = profile(cosmo, r_grid.flatten()/a_j, M_j, a_j, **o_j)
             
             mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
             mask = mask & (r_grid.flatten()/a_j < R_j*self.config['epsilon_max_Offset'])
@@ -536,6 +544,8 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
 
         Paint  = self.model
         Canvas = self.Canvas_model
+        
+        assert Paint.p_keys is Canvas.p_keys
 
         for j in tqdm(range(self.HaloNDCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
 
@@ -544,6 +554,10 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
             y_j = self.HaloNDCatalog.cat['y'][j]
             z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
 
+            #Other properties
+            keys = vars(self.model).get('p_keys', []) #Check if model has property keys
+            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} 
+            
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             
@@ -585,8 +599,8 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
         
 
             r_array   = np.geomspace(np.min(r_grid)/a_j, np.max(r_grid)/a_j, self.Nbin_interp)
-            Painting  = paint_profile(cosmo,  r_array, M_j, a_j)
-            Canvasing = canvas_profile(cosmo, r_array, M_j, a_j)
+            Painting  = paint_profile(cosmo,  r_array, M_j, a_j, **o_j)
+            Canvasing = canvas_profile(cosmo, r_array, M_j, a_j, **o_j)
             
             gmask     = np.isfinite(Painting) & np.isfinite(Canvasing)
             Painting  = Painting[gmask]
