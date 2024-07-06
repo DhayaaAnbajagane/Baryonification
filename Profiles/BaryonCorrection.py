@@ -71,16 +71,41 @@ class BaryonificationClass(object):
                         #Require mass to always increase w/ radius
                         #And remove pts of DMO = DMB, improves large-scale convergence
                         #And require at least 1e-6 difference else the interpolator breaks :/
-                        diff_mask = (np.diff(ln_DMB, prepend = 0) > 1e-5) & (np.diff(ln_DMO, prepend = 0) > 1e-5) 
-                        diff_mask = diff_mask & (np.abs(ln_DMB - ln_DMO) > 1e-6) 
                         
+                        min_diff  = -np.inf
+                        diff_mask = np.ones_like(ln_DMB).astype(bool)
+                        iterate   = 0
+                        while (min_diff < 1e-5) & (diff_mask.sum() > 5):
+                            
+                            new_mask  = ( (np.diff(ln_DMB, prepend = 0) > 1e-5) & 
+                                          (np.diff(ln_DMO, prepend = 0) > 1e-5) & 
+                                          (np.abs(ln_DMB - ln_DMO) > 1e-6) 
+                                        )
+                            
+                            diff_mask    = diff_mask & new_mask
+                            diff_mask[0] = True
+                            min_diff  = np.min([np.min(np.diff(ln_DMB[diff_mask], prepend = 0)[1:]),
+                                                np.min(np.diff(ln_DMO[diff_mask], prepend = 0)[1:])
+                                               ])
+                            
+                            iterate += 1
+                            
+                            if iterate > 30:
+                                diff_mask  = np.zeros_like(diff_mask).astype(bool) #Set everything to False and skip the building step next
+                                warn_text  = (f"Mass profile of log10(M) = {np.log10(M_range[i])} is nearly constant over radius. " 
+                                              "Suggests density is negative or zero for most of the range. If using convolutions,"
+                                              "consider changing the fft precision params in the CCL profile:"
+                                              "padding_lo_fftlog, padding_hi_fftlog, or n_per_decade")
+                                warnings.warn(warn_text, UserWarning)
+                                                                
+                            
                         #If we have enough usable mass values, then proceed as usual
                         #This generally breaks for very small halos, where projection
                         #can be catastrophicall broken (eg. only negative densities)
                         if diff_mask.sum() > 5:
                                    
-                            interp_DMB = interpolate.CubicSpline(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
-                            interp_DMO = interpolate.CubicSpline(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
+                            interp_DMB = interpolate.PchipInterpolator(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
+                            interp_DMO = interpolate.PchipInterpolator(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
 
                             offset = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
                             offset = np.where(np.isfinite(offset), offset, 0)
@@ -89,8 +114,8 @@ class BaryonificationClass(object):
                         #Just provide a warning saying this is happening
                         else:
                             offset = np.zeros_like(r)
-                            warn_text = (f"Displacement function for halo with M = {M_range[i]} failed to compute." 
-                                         "Defaulting to d = 0. Considering changing the fft precision params in the CCL profile:"
+                            warn_text = (f"Displacement function for halo with log10(M) = {np.log10(M_range[i])} failed to compute." 
+                                         "Defaulting to d = 0. Consider changing the fft precision params in the CCL profile:"
                                          "padding_lo_fftlog, padding_hi_fftlog, or n_per_decade")
                             warnings.warn(warn_text, UserWarning)
                         
@@ -178,12 +203,13 @@ class Baryonification3D(BaryonificationClass):
         lnr   = np.log(r)
         
         M_f   = np.zeros([M_enc.shape[0], r.size])
+        
         #Remove datapoints in profile where rho == 0 and then just interpolate
         #across them. This helps deal with ringing profiles due to 
         #fourier space issues, where profile could go negative sometimes
         for M_i in range(M_enc.shape[0]):
             Mask     = (rho[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
-            M_f[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
+            M_f[M_i] = np.exp( interpolate.PchipInterpolator(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
         
         if isinstance(M, (float, int) ): M_f = np.squeeze(M_f, axis = 0)
             
@@ -218,7 +244,7 @@ class Baryonification2D(BaryonificationClass):
         #fourier space issues, where profile could go negative sometimes
         for M_i in range(M_enc.shape[0]):
             Mask     = (Sigma[M_i] > 0) & (np.isfinite(M_enc[M_i])) #Keep only finite points, and ones with increasing density
-            M_f[M_i] = np.exp( interpolate.CubicSpline(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
+            M_f[M_i] = np.exp( interpolate.PchipInterpolator(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
         
         if isinstance(M, (float, int) ): M_f = np.squeeze(M_f, axis = 0)
             
