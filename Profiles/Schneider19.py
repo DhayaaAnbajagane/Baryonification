@@ -251,8 +251,9 @@ class DarkMatter(SchneiderProfiles):
         r_integral = np.geomspace(1e-6, 1000, 500)
 
         prof_integral  = 1/(r_integral/r_s * (1 + r_integral/r_s)**2) * 1/(1 + (r_integral/r_t)**2)**2
-        Normalization  = [interpolate.CubicSpline(np.log(r_integral), 4 * np.pi * r_integral**3 * p) for p in prof_integral]
-        Normalization  = np.array([N_i.integrate(np.log(r_integral[0]), np.log(R_i)) for N_i, R_i in zip(Normalization, R)])
+        
+        Normalization  = [interpolate.PchipInterpolator(np.log(r_integral), 4 * np.pi * r_integral**3 * p) for p in prof_integral]
+        Normalization  = np.array([N_i.antiderivative(nu = 1)(np.log(R_i)) for N_i, R_i in zip(Normalization, R)])
         
         rho_c = M_use/Normalization
         rho_c = rho_c[:, None]
@@ -538,9 +539,9 @@ class CollisionlessMatter(SchneiderProfiles):
         M_cga = 4 * np.pi * np.cumsum(r_integral**3 * rho_cga * dlnr, axis = -1)
         M_gas = 4 * np.pi * np.cumsum(r_integral**3 * rho_gas * dlnr, axis = -1)
         
-        ln_M_NFW = [interpolate.CubicSpline(np.log(r_integral), np.log(M_i[m_i])) for m_i in range(M_i.shape[0])]
-        ln_M_cga = [interpolate.CubicSpline(np.log(r_integral), np.log(M_cga[m_i])) for m_i in range(M_i.shape[0])]
-        ln_M_gas = [interpolate.CubicSpline(np.log(r_integral), np.log(M_gas[m_i])) for m_i in range(M_i.shape[0])]
+        ln_M_NFW = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_i[m_i]),   extrapolate = False) for m_i in range(M_i.shape[0])]
+        ln_M_cga = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_cga[m_i]), extrapolate = False) for m_i in range(M_i.shape[0])]
+        ln_M_gas = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_gas[m_i]), extrapolate = False) for m_i in range(M_i.shape[0])]
 
         del M_cga, M_gas, rho_i, rho_cga, rho_gas
 
