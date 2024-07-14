@@ -20,6 +20,8 @@ class BaryonificationClass(object):
         #Smaller cutoffs result in asymptotic value problems at large scales
         #Larger cutoffs lead to numerical divergence during FFTLogs
         #The user supplied cutoffs will be places when implementing cutoffs in data
+        #NOTE: We have not altered the PROJECTED cutoff, only the real cutoff.
+        #Projected cutoff must be specified to user input at all times.
         self.DMO.set_parameter('cutoff', 1000)
         self.DMB.set_parameter('cutoff', 1000)
         

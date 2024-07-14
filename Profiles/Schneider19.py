@@ -9,7 +9,8 @@ from ..utils.Tabulate import _set_parameter
 
 
 model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
-                'q', 'p', 'cutoff', #Relaxation params + cutoff
+                'q', 'p', #Relaxation params
+                'cutoff', 'proj_cutoff', #Cutoff parameters (numerical)
                 
                 'theta_ej', 'theta_co', 'M_c', 'gamma', 'delta', #Default gas profile param
                 'mu_theta_ej', 'mu_theta_co', 'mu_beta', 'mu_gamma', 'mu_delta', #Mass dep
@@ -23,7 +24,7 @@ model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
                
                ]
 
-projection_params = ['proj_rmin', 'proj_rmax', 'proj_n_per_decade']
+projection_params = ['padding_lo_proj', 'padding_hi_proj', 'n_per_decade_proj'] #Projection params
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
@@ -32,7 +33,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
-        for m in model_params:
+        for m in model_params + projection_params:
             if m in kwargs.keys():
                 setattr(self, m, kwargs[m])
             elif ('mu_' in m) or ('nu_' in m) or ('zeta_' in m): #Set mass/red/conc dependence
@@ -51,12 +52,12 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         super(SchneiderProfiles, self).__init__()
 
         #Function that returns correlation func at different radii
-        self.xi_mm     = xi_mm
+        self.xi_mm = xi_mm
 
-        
-        #Sets the cutoff scale of all profiles, in comoving Mpc
-        #This should be the box side length
-        self.cutoff  = kwargs['cutoff'] if 'cutoff' in kwargs.keys() else None
+        #Sets the cutoff scale of all profiles, in comoving Mpc. Prevents divergence in FFTLog
+        #Also set cutoff of projection integral. Should be the box side length
+        self.cutoff      = kwargs['cutoff'] if 'cutoff' in kwargs.keys() else 1e3 #1Gpc is a safe default choice
+        self.proj_cutoff = kwargs['proj_cutoff'] if 'proj_cutoff' in kwargs.keys() else self.cutoff
         
         
         #This allows user to force usage of the default FFTlog projection, if needed.
@@ -64,6 +65,11 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         #of a hard boundary on radius
         if not use_fftlog_projection:
             self._projected = self._projected_realspace
+        else:
+            text = ("You must set the same cutoff for 3D profile and projection profile if you want to use fftlog projection. "
+                    f"You have cutoff = {self.cutoff} and proj_cutoff = {self.proj_cutoff}")
+            assert self.cutoff == self.proj_cutoff, text
+
 
         #Constant that helps with the fourier transform convolution integral.
         #This value minimized the ringing due to the transforms
@@ -126,9 +132,9 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         int_max = self.padding_hi_proj   * np.max(r_use)
         int_N   = self.n_per_decade_proj * np.int32(np.log10(int_max/int_min))
         
-        #If cutoff was passed, then rewrite the integral max limit
-        if self.cutoff is not None:
-            int_max = self.cutoff
+        #If proj_cutoff was passed, then rewrite the integral max limit
+        if self.proj_cutoff is not None:
+            int_max = self.proj_cutoff
 
         r_integral = np.geomspace(int_min, int_max, int_N)
 
@@ -507,6 +513,11 @@ class CollisionlessMatter(SchneiderProfiles):
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
+        if np.min(r) < self.r_min_int: 
+            warnings.warn(f"Decrease integral lower limit, r_min_int ({self.r_min_int}) < minimum radius ({np.min(r)})", UserWarning)
+        if np.max(r) > self.r_max_int: 
+            warnings.warn(f"Increase integral lower limit, r_min_int ({self.r_max_int}) < minimum radius ({np.max(r)})", UserWarning)
+
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
         #due to the finite width oof the profile during iteration.
@@ -539,9 +550,11 @@ class CollisionlessMatter(SchneiderProfiles):
         M_cga = 4 * np.pi * np.cumsum(r_integral**3 * rho_cga * dlnr, axis = -1)
         M_gas = 4 * np.pi * np.cumsum(r_integral**3 * rho_gas * dlnr, axis = -1)
         
-        ln_M_NFW = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_i[m_i]),   extrapolate = False) for m_i in range(M_i.shape[0])]
-        ln_M_cga = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_cga[m_i]), extrapolate = False) for m_i in range(M_i.shape[0])]
-        ln_M_gas = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_gas[m_i]), extrapolate = False) for m_i in range(M_i.shape[0])]
+        #We intentionally set Extrapolate = True. This is to handle behavior at extreme small-scales (due to stellar profile)
+        #and radius limits at largest scales. Using extrapolate=True does not introduce numerical artifacts into predictions
+        ln_M_NFW = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_i[m_i]),   extrapolate = True) for m_i in range(M_i.shape[0])]
+        ln_M_cga = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_cga[m_i]), extrapolate = True) for m_i in range(M_i.shape[0])]
+        ln_M_gas = [interpolate.PchipInterpolator(np.log(r_integral), np.log(M_gas[m_i]), extrapolate = True) for m_i in range(M_i.shape[0])]
 
         del M_cga, M_gas, rho_i, rho_cga, rho_gas
 
@@ -554,8 +567,9 @@ class CollisionlessMatter(SchneiderProfiles):
             
             while max_rel_diff > self.reltol:
 
-                r_f  = r_integral*relaxation_fraction[m_i]
-                M_f  = f_clm[m_i]*M_i[m_i] + np.exp(ln_M_cga[m_i](np.log(r_f))) + np.exp(ln_M_gas[m_i](np.log(r_f)))
+                with np.errstate(over = 'ignore'):
+                    r_f  = r_integral*relaxation_fraction[m_i]
+                    M_f  = f_clm[m_i]*M_i[m_i] + np.exp(ln_M_cga[m_i](np.log(r_f))) + np.exp(ln_M_gas[m_i](np.log(r_f)))
 
                 relaxation_fraction_new = self.a*( (M_i[m_i]/M_f)**self.n - 1 ) + 1
 
