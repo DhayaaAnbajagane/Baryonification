@@ -77,16 +77,13 @@ class BaryonificationClass(object):
                         iterate   = 0
                         while (min_diff < 1e-5) & (diff_mask.sum() > 5):
                             
-                            new_mask  = ( (np.diff(ln_DMB, prepend = 0) > 1e-5) & 
-                                          (np.diff(ln_DMO, prepend = 0) > 1e-5) & 
-                                          (np.abs(ln_DMB - ln_DMO) > 1e-6) 
+                            new_mask  = ( (np.diff(ln_DMB[diff_mask], prepend = 0) > 1e-5) & 
+                                          (np.diff(ln_DMO[diff_mask], prepend = 0) > 1e-5) & 
+                                          (np.abs(ln_DMB - ln_DMO)[diff_mask] > 1e-6) 
                                         )
                             
-                            diff_mask    = diff_mask & new_mask
+                            diff_mask[diff_mask] = new_mask
                             diff_mask[0] = True
-                            min_diff  = np.min([np.min(np.diff(ln_DMB[diff_mask], prepend = 0)[1:]),
-                                                np.min(np.diff(ln_DMO[diff_mask], prepend = 0)[1:])
-                                               ])
                             
                             iterate += 1
                             
@@ -97,6 +94,19 @@ class BaryonificationClass(object):
                                               "consider changing the fft precision params in the CCL profile:"
                                               "padding_lo_fftlog, padding_hi_fftlog, or n_per_decade")
                                 warnings.warn(warn_text, UserWarning)
+                                break
+                                
+                            if diff_mask.sum() < 5: 
+                                warn_text  = (f"Mass profile of log10(M) = {np.log10(M_range[i])} is nearly constant over radius. " 
+                                              "Or it is broken. Less than 5 datapoints are usable.")
+                                warnings.warn(warn_text, UserWarning)
+                                break
+                            
+                            min_diff  = np.min([np.min(np.diff(ln_DMB[diff_mask], prepend = 0)[1:]),
+                                                np.min(np.diff(ln_DMO[diff_mask], prepend = 0)[1:])
+                                               ])
+                            
+                            
                                                                 
                             
                         #If we have enough usable mass values, then proceed as usual
