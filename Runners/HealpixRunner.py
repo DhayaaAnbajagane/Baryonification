@@ -44,7 +44,7 @@ class DefaultRunner(object):
     A class that contains relevant utils for input/output
     '''
     
-    def __init__(self, HaloLightConeCatalog, LightconeShell, config, model = None, use_ellipticity = False,
+    def __init__(self, HaloLightConeCatalog, LightconeShell, model = None, use_ellipticity = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloLightConeCatalog  = HaloLightConeCatalog
@@ -56,51 +56,10 @@ class DefaultRunner(object):
         self.mass_def = mass_def
         self.verbose  = verbose
         
-        self.config   = self.set_config(config)
-
         self.use_ellipticity = use_ellipticity
         
         if use_ellipticity:
             raise NotImplementedError("You have set use_ellipticity = True, but this not yet implemented for HealpixRunner")
-
-
-    def set_config(self, config):
-
-        #Dictionary to hold all the params
-        out = {}
-
-        out['OutPath']   = config.get('OutPath', None)
-        out['Name']      = config.get('Name', '')
-
-        out['epsilon_max_Cutout'] = config.get('epsilon_max_Cutout', 5)
-        out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 5)
-        out['pixel_scale_factor'] = config.get('pixel_scale_factor', 0.5)
-
-
-        if self.verbose:
-            #Print args for debugging state
-            print('-------UPDATING INPUT PARAMS----------')
-            for p in out.keys():
-                print('%s : %s'%(p.upper(), out[p]))
-            print('-----------------------------')
-            print('-----------------------------')
-
-        return out
-    
-    
-    def output(self, X):
-        
-        if isinstance(self.config['OutPath'], str):
-
-            path_ = self.config['OutPath']
-            hdu   = fits.HDUList([fits.PrimaryHDU(), fits.ImageHDU(X)])
-            hdu.writeto(path_, overwrite = True)
-                        
-            if self.verbose: print("WRITING TO ", path_)
-            
-        else:
-            
-            if self.verbose: print("OutPath is not string. Map is not saved to disk")
     
     
     def build_Rmat(self, A, ref):
@@ -159,7 +118,7 @@ class BaryonifyShell(DefaultRunner):
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
             vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
             
-            radius = R_j * self.config['epsilon_max_Cutout'] / D_j
+            radius = R_j * self.epsilon_max / D_j
             pixind = hp.query_disc(self.LightconeShell.NSIDE, vec_j, radius, inclusive = False, nest = False)
             
             #If there are less than 4 particles, use the 4 nearest particles
@@ -241,7 +200,7 @@ class PaintProfilesShell(DefaultRunner):
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
             vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
             
-            radius = R_j * self.config['epsilon_max_Cutout'] / D_j
+            radius = R_j * self.epsilon_max / D_j
             pixind = hp.query_disc(self.LightconeShell.NSIDE, vec_j, radius, inclusive = False, nest = False)
             vec    = np.stack(hp.pix2vec(nside = NSIDE, ipix = pixind), axis = 1)
             

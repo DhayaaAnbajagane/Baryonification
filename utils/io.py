@@ -59,9 +59,13 @@ class HaloLightConeCatalog(object):
         dec = self.cat['dec'][key]
         z   = self.cat['z'][key]
         M   = self.cat['M'][key]
-        c   = self.cat['c'][key] if 'c' in self.cat.dtype.names else None
-                    
-        return HaloLightConeCatalog(ra, dec, M, z, c, cosmo = self.cosmo)
+                        
+        other = {}
+        for k in self.cat.dtype.names:
+            if k not in ['x', 'y', 'z', 'M']:
+                other[k] = self.cat[k][key]
+        
+        return HaloLightConeCatalog(ra, dec, M, z, self.cosmo, **other)
     
 
 class HaloNDCatalog(object):

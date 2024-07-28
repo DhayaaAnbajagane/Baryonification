@@ -11,7 +11,7 @@ class DefaultRunnerSnapshot(object):
     A class that contains relevant utils for input/output
     '''
     
-    def __init__(self, HaloNDCatalog, ParticleSnapshot, config, model,
+    def __init__(self, HaloNDCatalog, ParticleSnapshot, model,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloNDCatalog    = HaloNDCatalog
@@ -22,8 +22,6 @@ class DefaultRunnerSnapshot(object):
         self.mass_def = mass_def
         self.verbose  = verbose
         
-        self.config   = self.set_config(config)
-
         if ParticleSnapshot.is2D:
             coords = np.vstack([ParticleSnapshot.cat['x'], ParticleSnapshot.cat['y']]).T
         else:
@@ -31,42 +29,6 @@ class DefaultRunnerSnapshot(object):
                                
         self.tree = KDTree(coords, boxsize = ParticleSnapshot.L)
 
-
-    def set_config(self, config):
-
-        #Dictionary to hold all the params
-        out = {}
-
-        out['OutPath']   = config.get('OutPath', None)
-        out['Name']      = config.get('Name', '')
-
-        out['epsilon_max_Cutout'] = config.get('epsilon_max_Cutout', 5)
-        out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 5)
-
-        if self.verbose:
-            #Print args for debugging state
-            print('-------UPDATING INPUT PARAMS----------')
-            for p in out.keys():
-                print('%s : %s'%(p.upper(), out[p]))
-            print('-----------------------------')
-            print('-----------------------------')
-
-        return out
-    
-    
-    def output(self, X):
-        
-        if isinstance(self.config['OutPath'], str):
-
-            path_ = self.config['OutPath']
-            np.save(path_, X)
-                        
-            if self.verbose: print("WRITING TO ", path_)
-            
-        else:
-            
-            if self.verbose: print("OutPath is not string. Map is not saved to disk")
-                
                 
     def compute_distance(self, *args):
         
@@ -118,7 +80,7 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
             
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
-            R_q = self.config['epsilon_max_Cutout'] * R_j/a_j #The radius for querying points, in comoving coords
+            R_q = self.epsilon_max * R_j/a_j #The radius for querying points, in comoving coords
             R_q = np.clip(R_q, 0, L/2) #Can't query distances more than half box-size.
             
             if is2D:

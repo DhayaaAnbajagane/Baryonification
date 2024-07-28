@@ -86,7 +86,7 @@ class DefaultRunnerGrid(object):
     A class that contains relevant utils for input/output
     '''
     
-    def __init__(self, HaloNDCatalog, GriddedMap, config, model = None, use_ellipticity = False,
+    def __init__(self, HaloNDCatalog, GriddedMap, epsilon_max, model = None, use_ellipticity = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloNDCatalog = HaloNDCatalog
@@ -95,11 +95,10 @@ class DefaultRunnerGrid(object):
         self.model = model
         
         
-        self.mass_def = mass_def
-        self.verbose  = verbose
+        self.epsilon_max = epsilon_max
+        self.mass_def    = mass_def
+        self.verbose     = verbose
         
-        self.config   = self.set_config(config)
-
         self.use_ellipticity = use_ellipticity
         
         #Assert that all the required quantities are in the input catalog
@@ -110,43 +109,8 @@ class DefaultRunnerGrid(object):
             assert 'q_ell' in names, "The 'q_ell' column is missing, but you set use_ellipticity = True"
             if not GriddedMap.is2D: assert 'c_ell' in names, "The 'c_ell' column is missing, but you set use_ellipticity = True"
             assert 'A_ell' in names, "The 'A_ell' column is missing, but you set use_ellipticity = True"
-
-
-    def set_config(self, config):
-
-        #Dictionary to hold all the params
-        out = {}
-
-        out['OutPath']   = config.get('OutPath', None)
-        out['Name']      = config.get('Name', '')
-
-        out['epsilon_max_Cutout'] = config.get('epsilon_max_Cutout', 5)
-        out['epsilon_max_Offset'] = config.get('epsilon_max_Offset', 5)
-
-        if self.verbose:
-            #Print args for debugging state
-            print('-------UPDATING INPUT PARAMS----------')
-            for p in out.keys():
-                print('%s : %s'%(p.upper(), out[p]))
-            print('-----------------------------')
-            print('-----------------------------')
-
-        return out
     
     
-    def output(self, X):
-        
-        if isinstance(self.config['OutPath'], str):
-
-            path_ = self.config['OutPath']
-            np.save(path_, X)
-                        
-            if self.verbose: print("WRITING TO ", path_)
-            
-        else:
-            
-            if self.verbose: print("OutPath is not string. Map is not saved to disk")
-
     def build_Rmat(self, A, q):
 
         A /= np.linalg.norm(A)
@@ -178,7 +142,7 @@ class DefaultRunnerGrid(object):
         
         elif len(A) == 3:
             
-            raise ValueError("This method has not yet been verified. Use 2D ellipticity method instead")
+            raise NotImplementedError("This method has not yet been verified. Use 2D ellipticity method instead")
 
             v = np.cross(A, ref)
             c = np.dot(A, ref)
@@ -237,7 +201,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
-            R_q = self.config['epsilon_max_Cutout'] * R_j/a_j
+            R_q = self.epsilon_max * R_j/a_j
             R_q = np.clip(R_q, 0, np.max(self.GriddedMap.bins)/2) #Can't query distances more than half box-size.
             
             if self.use_ellipticity:
@@ -314,6 +278,8 @@ class BaryonifyGrid(DefaultRunnerGrid):
                 
                 #If ellipticity exists, then account for it
                 if self.use_ellipticity:
+
+                    raise NotImplementedError("Currently not able to ellipticities with 3D maps.")
                     assert q_j > 0, "The axis ratio in halo %d is zero" % j
 
                     Rmat = self.build_Rmat(A_j, np.array([0., 1., 0.]))
@@ -414,7 +380,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
                 A_j = A_j/np.sqrt(np.sum(A_j**2))
             
             res    = self.GriddedMap.res
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / res
+            Nsize  = 2 * self.epsilon_max * R_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
             Nsize  = np.clip(Nsize, 2, bins.size//2) #Can't skip small halos because we still must sum all contributions to a pixel
 
@@ -487,7 +453,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
             Painting = profile(cosmo, r_grid.flatten(), M_j, a_j, **o_j)
             
             mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
-            mask = mask & (r_grid.flatten() < R_j*self.config['epsilon_max_Offset'])
+            mask = mask & (r_grid.flatten() < R_j*self.epsilon_max)
             if mask.sum() == 0: continue
                 
             Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0
@@ -506,13 +472,13 @@ class PaintProfilesGrid(DefaultRunnerGrid):
 class PaintProfilesAnisGrid(DefaultRunnerGrid):
 
 
-    def __init__(self, HaloNDCatalog, GriddedMap, config, Painting_model = None, Canvas_model = None, Nbin_interp = 1_000,
+    def __init__(self, HaloNDCatalog, GriddedMap, epsilon_max, Painting_model = None, Canvas_model = None, Nbin_interp = 1_000,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
         
         self.Canvas_model = Canvas_model
         self.Nbin_interp  = Nbin_interp
 
-        super().__init__(HaloNDCatalog, GriddedMap, config, Painting_model, mass_def, verbose)
+        super().__init__(HaloNDCatalog, GriddedMap, epsilon_max, Painting_model, mass_def, verbose)
     
 
     def pick_indices(self, center, width, Npix):
@@ -562,7 +528,7 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) / a_j #in comoving Mpc
             
             res    = self.GriddedMap.res
-            Nsize  = 2 * self.config['epsilon_max_Cutout'] * R_j / res
+            Nsize  = 2 * self.epsilon_max * R_j / res
             Nsize  = int(Nsize // 2)*2 #Force it to be even
             
             if Nsize < 2:
@@ -616,7 +582,7 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
             Painting  =  np.exp(interp(delta_in))
             
             mask = np.isfinite(Painting) #Find which part of map cannot be modified due to out-of-bounds errors
-            mask = mask & (r_grid.flatten() < R_j*self.config['epsilon_max_Offset'])
+            mask = mask & (r_grid.flatten() < R_j*self.epsilon_max)
             if mask.sum() == 0: continue
             
             Painting = np.where(mask, Painting, 0) #Set those tSZ values to 0

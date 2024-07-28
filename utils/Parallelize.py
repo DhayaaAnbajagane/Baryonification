@@ -1,8 +1,5 @@
 import joblib
-import pickle
-import datetime as dt
 import numpy as np
-import os
 
 class SimpleParallel(object):
     '''
@@ -24,17 +21,13 @@ class SimpleParallel(object):
     
     def process(self):
         
-        start = dt.datetime.now()
-
-        jobs = [joblib.delayed(self.single_run)(i, Runner) for i, Runner in enumerate(self.Runner_list)]
-        
         with joblib.parallel_backend("loky"):
+            jobs    = [joblib.delayed(self.single_run)(i, Runner) for i, Runner in enumerate(self.Runner_list)]
             outputs = joblib.Parallel(n_jobs = self.njobs, verbose=10)(jobs)
 
-        #Order them to be the order as they were input
+        #Sort them so they are in the same order as they were input
         ordered_outputs = [0] * len(outputs)
-        for o in outputs:
-            ordered_outputs[o[0]] = o[1]
+        for o in outputs: ordered_outputs[o[0]] = o[1]
             
             
         return ordered_outputs
@@ -61,12 +54,10 @@ class SplitJoinParallel(object):
         
         HaloCat  = Runner.HaloLightConeCatalog
         Shell    = Runner.LightconeShell
-        config   = Runner.config.copy()
         cosmo    = Runner.cosmo
         model    = Runner.model
         mass_def = Runner.mass_def
-        
-        OutPath  = config.pop('OutPath', None)
+        eps_max  = Runner.epsilon_max
         
         #Now split
         
@@ -83,12 +74,13 @@ class SplitJoinParallel(object):
             start = i*Npersplit
             end   = (i + 1)*Npersplit
             
-            New_HaloCatalog = type(HaloCat)(ra = catalog['ra'][start:end], dec = catalog['dec'][start:end],
-                                            M = catalog['M'][start:end],   z = catalog['z'][start:end], cosmo = cosmo)
+            #Halocatalog object is sliceable like a regular numpy array so can easily
+            #split the halos up but keep the same data structure
+            New_HaloCatalog = HaloCat[start:end]
             
             #Create a new Runner for just a subset of catalog. Has same model, map size etc.
             #Force verbose to be off as we don't want outputs for each subrun of parallel process.
-            New_Runner = type(Runner)(New_HaloCatalog, empty_shell, config, model, mass_def, verbose = False)
+            New_Runner = type(Runner)(New_HaloCatalog, empty_shell, eps_max, model, mass_def, verbose = False)
             
             Runner_list.append(New_Runner)
         
@@ -101,18 +93,14 @@ class SplitJoinParallel(object):
     
     def process(self):
         
-        start = dt.datetime.now()
-
-        jobs = [joblib.delayed(self.single_run)(Runner) for Runner in self.Runner_list]
-
         with joblib.parallel_backend("loky"):
+            jobs    = [joblib.delayed(self.single_run)(Runner) for Runner in self.Runner_list]
             outputs = joblib.Parallel(n_jobs = self.njobs, verbose=10)(jobs)
 
+        #Sum the contributions from invidual runs. 
+        #Contributions from each halo can be linearly added so this is fine
         map_out = np.sum(outputs, axis = 0)
         
-        #Use the output method from the original Runner that was passed in
-        self.Runner.output(map_out)
-            
-        return 
+        return map_out
     
     
