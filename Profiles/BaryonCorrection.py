@@ -11,7 +11,7 @@ from ..utils.Tabulate import _set_parameter
 
 class BaryonificationClass(object):
 
-    def __init__(self, DMO, DMB, cosmo, N_samples = 500, epsilon_max = 20, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def __init__(self, DMO, DMB, cosmo, epsilon_max = 20, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
         self.DMO = DMO
         self.DMB = DMB
@@ -27,7 +27,6 @@ class BaryonificationClass(object):
         
         self.cosmo       = cosmo #CCL cosmology instance
         self.epsilon_max = epsilon_max
-        self.N_samples   = N_samples
         self.mass_def    = mass_def
 
 

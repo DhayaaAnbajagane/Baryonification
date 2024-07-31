@@ -268,13 +268,15 @@ class Temperature(SchneiderProfiles):
     
     
 
-class ThermalSZ(object):
+class ThermalSZ(SchneiderProfiles):
     
     
-    def __init__(self, Pressure = None):
+    def __init__(self, Pressure = None, **kwargs):
         
         self.Pressure = Pressure
         if self.Pressure is None: self.Pressure = Pressure(**kwargs)
+
+        super().__init__(**kwargs)
         
     
     def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
