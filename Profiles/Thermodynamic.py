@@ -19,10 +19,12 @@ m_e     = 9.10938e-31 / Msun_to_Kg
 m_p     = 1.67262e-27 / Msun_to_Kg
 c       = 2.99792458e8 / Mpc_to_m
 
-sigma_T_cgs = 6.652458e-29 / m_to_cm**2
-m_e_cgs     = 9.10938e-31 * 1e3
-m_p_cgs     = 1.67262e-27 * 1e3
-c_cgs       = 2.99792458e8 * m_to_cm
+#CGS units of everything, to use in thermalSZ
+sigma_T_cgs = 6.652458e-29 * m_to_cm**2 #m^2 -> cm^2
+m_e_cgs     = 9.10938e-31 * 1e3 #Kg -> g
+m_p_cgs     = 1.67262e-27 * 1e3 #Kg -> g
+c_cgs       = 2.99792458e8 * m_to_cm #m/s -> cm/s
+
 
 #Thermodynamic/abundance quantities
 Y         = 0.24 #Helium mass ratio
@@ -50,7 +52,8 @@ class Pressure(SchneiderProfiles):
         if self.DarkMatterBaryon is None: self.DarkMatterBaryon = DarkMatterBaryon(**kwargs) - TwoHalo(**kwargs)
             
         #Now make sure the cutoff is sufficiently high
-        #We don't want small cutoff when computing the true pressure profile.
+        #We don't want small cutoff of 1-halo term when computing the TRUE pressure profile.
+        #The cutoff is reapplied to the derives pressure profiles in _real()
         self.Gas.set_parameter('cutoff', 1000)
         self.DarkMatterBaryon.set_parameter('cutoff', 1000)
             
@@ -67,7 +70,7 @@ class Pressure(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        r_integral = np.geomspace(1e-3, 100, 500) #Hardcoded ranges
+        r_integral = np.geomspace(1e-6, 1000, 500) #Hardcoded ranges
 
         rho_total  = self.DarkMatterBaryon.real(cosmo, r_integral, M, a, mass_def = mass_def)
         rho_gas    = self.Gas.real(cosmo, r_integral, M, a, mass_def = mass_def)
@@ -87,19 +90,18 @@ class Pressure(SchneiderProfiles):
         #flip the integral direction, and flip it second time so P(r) goes from r = 0 to r = infty
         prof  = - np.cumsum((dP_dr * r_integral)[:, ::-1] * dlnr, axis = -1)[:, ::-1]
         
-        prof  = interpolate.CubicSpline(np.log(r_integral), np.log(prof + Pressure_at_infinity), axis = 1, extrapolate = False)
-        prof  = np.exp(prof(np.log(r_use)) - Pressure_at_infinity)
-        prof  = np.where(np.isfinite(prof), prof, 0) #Get rid of pesky NaN and inf values! They break CCL spline interpolator
+        prof  = interpolate.PchipInterpolator(np.log(r_integral), np.log(prof + Pressure_at_infinity), axis = 1, extrapolate = False)
+        prof  = np.exp(prof(np.log(r_use))) - Pressure_at_infinity
+        prof  = np.where(np.isfinite(prof), prof, 0) #Get rid of pesky NaN and inf values if they exist! They break CCL spline interpolator
         
-        #Convert to CGS
-        prof = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
-        
+        #Convert to CGS. Using only one factor of Mpc_to_m is correct
+        prof  = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
         
         #Now do cutoff
-        arg  = (r_use[None, :] - self.cutoff)
-        arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
-        kfac = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
-        prof = prof * kfac
+        arg   = (r_use[None, :] - self.cutoff)
+        arg   = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac  = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
+        prof  = prof * kfac
         
 
         #Handle dimensions so input dimensions are mirrored in the output
@@ -289,12 +291,14 @@ class ThermalSZ(SchneiderProfiles):
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
-        z = 1/a - 1
+        z     = 1/a - 1
+        R     = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
-        prof = sigma_T_cgs/(m_e_cgs*c_cgs**2) * a * self.Pressure.projected(cosmo, r_use, M_use, a, mass_def)
-        prof = prof*self.Pgas_to_Pe(cosmo, r_use, M_use, a, mass_def)
+        #Now a series of units changes to the projected profile.
+        prof  = self.Pressure.projected(cosmo, r_use, M_use, a, mass_def) #generate profile
+        prof  = prof * a * (Mpc_to_m * 1e2) #Line-of-sight integral is done in comoving Mpc, we want physical cm
+        prof  = prof * sigma_T_cgs/(m_e_cgs*c_cgs**2) #Convert to SZ (dimensionless units)
+        prof  = prof * self.Pgas_to_Pe(cosmo, r_use, M_use, a, mass_def) #Then convert from gas pressure to electron pressure
         
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
