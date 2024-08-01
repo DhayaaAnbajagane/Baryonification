@@ -18,18 +18,16 @@ class ConvolvedProfile(object):
     
     def __init__(self, Profile, Pixel):
         
-        self.Profile = Profile
-        self.Pixel   = Pixel
-        
-        self.fft_par = Profile.precision_fftlog
+        self.Profile    = Profile
+        self.Pixel      = Pixel
+        self.fft_par    = Profile.precision_fftlog
         
         self.isHarmonic = Pixel.isHarmonic
         
         
     def __getattr__(self, name):
         """
-        Delegate attribute and method access 
-        to the Profile object passesd to the class,
+        Delegate attribute and method access to the Profile object passed to the class,
         but only if attr/method is not already found in the class.
         """
         
@@ -38,6 +36,11 @@ class ConvolvedProfile(object):
         
         except AttributeError:
             return getattr(self.Profile, name)
+
+    #Need to explicitly set these two (for pickling)
+    #since otherwise the getattr call above leads to infinite recursions.
+    def __getstate__(self): self.__dict__.copy()    
+    def __setstate__(self, state): self.__dict__.update(state)
     
     
     def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
@@ -53,7 +56,7 @@ class ConvolvedProfile(object):
         r_out, prof = fftlog(k_out, Pk * self.Pixel.real(k_out), 3, 0, self.fft_par['plaw_fourier'] + 1)
         
         r    = np.clip(r, self.Pixel.size / 5, None) #Set minimum radius according to pixel, to prevent ringing on small-scale outputs
-        prof = interpolate.CubicSpline(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
+        prof = interpolate.PchipInterpolator(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
         prof = np.where(np.isnan(prof), 0, prof) * (2*np.pi)**3
         
         return prof
@@ -64,7 +67,7 @@ class ConvolvedProfile(object):
         if self.isHarmonic:
             
             assert a < 1, f"You cannot set a = 1, z = 0 when computing harmonic sky projections"
-            D_A = ccl.background.angular_diameter_distance(cosmo, a)
+            D_A = ccl.comoving_angular_distance(cosmo, a)
             
         r_min = np.min([np.min(r) * self.fft_par['padding_lo_fftlog'], 1e-8])
         r_max = np.max([np.max(r) * self.fft_par['padding_hi_fftlog'], 1e3])
@@ -73,18 +76,18 @@ class ConvolvedProfile(object):
         r_fft = np.geomspace(r_min, r_max, n)
         prof  = self.Profile.projected(cosmo, r_fft, M, a, mass_def)
         
-        if self.isHarmonic: r_fft = r_fft * a / D_A
+        if self.isHarmonic: r_fft = r_fft / D_A
         
         k_out, Pk   = fftlog(r_fft, prof, 2, 0, self.fft_par['plaw_fourier'] + 1)
         r_out, prof = fftlog(k_out, Pk * self.Pixel.projected(k_out), 2, 0, self.fft_par['plaw_fourier'] + 1)
         
         if self.isHarmonic: 
-            r_out = r_out / a * D_A
-            r     = np.clip(r, self.Pixel.size / 5 * D_A/a, None)
+            r_out = r_out * D_A
+            r     = np.clip(r, self.Pixel.size / 5 * D_A, None)
         else:
             r     = np.clip(r, self.Pixel.size / 5, None)
             
-        prof = interpolate.CubicSpline(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
+        prof = interpolate.PchipInterpolator(np.log(r_out), prof, extrapolate = False, axis = -1)(np.log(r))
         prof = np.where(np.isnan(prof), 0, prof) * (2*np.pi)**2
         
         return prof
@@ -99,10 +102,10 @@ class GridPixelApprox(object):
     as being a circular tophat
     """
     
-    def __init__(self, size):
-        
+    isHarmonic = False
+
+    def __init__(self, size):    
         self.size = size
-        self.isHarmonic = False
         
     
     def beam(self, k, R):
@@ -145,15 +148,18 @@ class HealPixel(object):
     averages over the m-modes per ell).
     """
     
+    isHarmonic = True
+
     def __init__(self, NSIDE):
         
-        self.NSIDE      = NSIDE
-        self.size       = hp.nside2resol(NSIDE)
-        self.isHarmonic = True
+        self.NSIDE = NSIDE
+        self.size  = hp.nside2resol(NSIDE)
         
     
     def real(self, k):
-        
+
+        #Can't use healpix pixel for real-space, so just make the beam 0.
+        #That way the real-space profile will also be 0 and throw errors. 
         return np.zeros_like(k)
         
     

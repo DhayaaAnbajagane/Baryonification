@@ -23,26 +23,26 @@ def _set_parameter(obj, key, value):
             
 class TabulatedProfile(ccl.halos.profiles.HaloProfile):
 
-    def __init__(self, model, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def __init__(self, model, cosmo, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
 
-        self.model = model
-        self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
-        self.R_range     = R_range
-        self.N_samples   = N_samples
-        self.mass_def    = mass_def
+        self.model    = model
+        self.cosmo    = cosmo #CCL cosmology instance
+        self.mass_def = mass_def
 
         #Get all the other params. Particularly those
         #needed for projecting profiles
         super().__init__()
 
 
-    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, 
-                           z_linear_sampling = False, verbose = False):
+    def setup_interpolator(self, z_min = 1e-2, z_max = 5, N_samples_z = 30, z_linear_sampling = False, 
+                           M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, 
+                           R_min = 1e-3, R_max = 1e2,  N_samples_R = 100, 
+                           other_params = {}, verbose = True):
 
         M_range  = np.geomspace(M_min, M_max, N_samples_Mass)
+        r        = np.geomspace(R_min, R_max, N_samples_R)
         z_range  = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
-        r        = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr     = np.log(r[1]) - np.log(r[0])
 
         interp3D = np.zeros([z_range.size, M_range.size, r.size])
@@ -53,8 +53,8 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
                 a_j = 1/(1 + z_range[j])
 
                 #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                interp3D[j, :, :] = self.model.real(self.ccl_cosmo, r, M_range, a_j, mass_def = self.mass_def)
-                interp2D[j, :, :] = self.model.projected(self.ccl_cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
+                interp3D[j, :, :] = self.model.real(self.cosmo, r, M_range, a_j, mass_def = self.mass_def)
+                interp2D[j, :, :] = self.model.projected(self.cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
                 pbar.update(1)
 
         input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
@@ -126,25 +126,24 @@ class ParamTabulatedProfile(object):
     parameters that go as inputs into the profile class (i.e. any parameter that would go into an __init__ call)
     '''
     
-    def __init__(self, model, ccl_cosmo, R_range = [1e-5, 40], N_samples = 500, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def __init__(self, model, cosmo, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
 
-        self.model = model
-        self.ccl_cosmo   = ccl_cosmo #CCL cosmology instance
-        self.R_range     = R_range
-        self.N_samples   = N_samples
-        self.mass_def    = mass_def
+        self.model    = model
+        self.cosmo    = cosmo #CCL cosmology instance
+        self.mass_def = mass_def
         
         assert not isinstance(model, TabulatedProfile), "Input model cannot be 'TabulatedProfile' object."
 
-
         
-    def setup_interpolator(self, z_min = 1e-2, z_max = 5, M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, N_samples_z = 30, 
-                           z_linear_sampling = False, verbose = False, other_params = {}):
+    def setup_interpolator(self, z_min = 1e-2, z_max = 5, N_samples_z = 30, z_linear_sampling = False, 
+                           M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, 
+                           R_min = 1e-3, R_max = 1e2,  N_samples_R = 100, 
+                           other_params = {}, verbose = True):
 
         M_range  = np.geomspace(M_min, M_max, N_samples_Mass)
+        r        = np.geomspace(R_min, R_max, N_samples_R)
         z_range  = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
-        r        = np.geomspace(self.R_range[0], self.R_range[1], self.N_samples)
         dlnr     = np.log(r[1]) - np.log(r[0])
 
         p_keys   = list(other_params.keys()); setattr(self, 'p_keys', p_keys)
@@ -169,8 +168,8 @@ class ParamTabulatedProfile(object):
                     index = tuple([j, slice(None), slice(None)] + list(c))
                     
                     #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                    interp3D[index] = self.model.real(self.ccl_cosmo, r, M_range, a_j, mass_def = self.mass_def)
-                    interp2D[index] = self.model.projected(self.ccl_cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
+                    interp3D[index] = self.model.real(self.cosmo, r, M_range, a_j, mass_def = self.mass_def)
+                    interp2D[index] = self.model.projected(self.cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
                     pbar.update(1)
                     
 
