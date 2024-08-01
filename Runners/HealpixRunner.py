@@ -10,6 +10,7 @@ from astropy import units as u
 from astropy.io import fits
 
 from tqdm import tqdm
+from ..utils import ParamTabulatedProfile
 
 MY_FILL_VAL = np.NaN
 
@@ -37,24 +38,26 @@ def regrid_pixels_hpix(hmap, parent_pix_vals, child_pix, child_weights):
     
     return hmap
 
-
+#Quickly run the function once so it compiles and initializes
+# regrid_pixels_hpix(np.zeros([5, 5]), np.ones([2, 2]), np.ones([]))
                     
 class DefaultRunner(object):
     '''
     A class that contains relevant utils for input/output
     '''
     
-    def __init__(self, HaloLightConeCatalog, LightconeShell, model = None, use_ellipticity = False,
+    def __init__(self, HaloLightConeCatalog, LightconeShell, epsilon_max, model = None, use_ellipticity = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
-        self.HaloLightConeCatalog  = HaloLightConeCatalog
-        self.LightconeShell        = LightconeShell
-        self.cosmo  = HaloLightConeCatalog.cosmology
-        self.model  = model
+        self.HaloLightConeCatalog = HaloLightConeCatalog
+        self.LightconeShell       = LightconeShell
+        self.cosmo = HaloLightConeCatalog.cosmology
+        self.model = model
         
         
-        self.mass_def = mass_def
-        self.verbose  = verbose
+        self.epsilon_max = epsilon_max
+        self.mass_def    = mass_def
+        self.verbose     = verbose
         
         self.use_ellipticity = use_ellipticity
         
@@ -83,24 +86,26 @@ class BaryonifyShell(DefaultRunner):
 
     def process(self):
 
-        cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
-                                  Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
-
-
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
-                              Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
+                              Omega_b = self.cosmo['Omega_b'], h   = self.cosmo['h'],
                               sigma8  = self.cosmo['sigma8'],  n_s = self.cosmo['n_s'],
+                              w0      = self.cosmo['w0'],
                               matter_power_spectrum = 'linear')
         cosmo.compute_sigma()
-
-        healpix_inds = np.arange(hp.nside2npix(self.LightconeShell.NSIDE), dtype = int)
 
         orig_map = self.LightconeShell.map
         NSIDE    = self.LightconeShell.NSIDE
 
         #Build interpolator between redshift and ang-diam-dist. Assume we never use z > 30
         z_t = np.linspace(0, 30, 1000)
-        D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
+        D_a = interpolate.CubicSpline(z_t, ccl.angular_diameter_distance(cosmo, 1/(1 + z_t)))
+        
+        keys = vars(self.model).get('p_keys', []) #Check if model has property keys
+
+        if len(keys) > 0:
+            txt = (f"You asked to use {keys} properties in Baryonification. You must pass a ParamTabulatedProfile"
+                   f"as the model. You have passed {type(self.model)} instead")
+            assert isinstance(self.model, ParamTabulatedProfile), txt
         
         pix_offsets = np.zeros([orig_map.size, 3]) 
         
@@ -111,9 +116,9 @@ class BaryonifyShell(DefaultRunner):
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j)
-            
-            c_j = self.HaloNDCatalog.cat['c'][j] if self.model.use_concentration else None
+            o_j = {key : self.HaloLightConeCatalog.cat[key][j] for key in keys} #Other properties
 
+            #Now just ra and dec
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
             vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
@@ -125,15 +130,16 @@ class BaryonifyShell(DefaultRunner):
             if pixind.size < 4:
                 pixind = hp.get_interp_weights(NSIDE, ra_j, dec_j, lonlat = True)[0]
                 
-            vec    = np.stack(hp.pix2vec(nside = NSIDE, ipix = pixind), axis = 1)
+            vec    = np.stack(hp.pix2vec(nside = NSIDE, ipix = pixind), axis = 1) #We don't precompute/cache, in order to save memory
             
             pos_j  = vec_j * D_j #We assume flat cosmologies, where D_a is the right distance to use here
-            pos    = vec   * D_j
+            pos    = vec   * D_j #In physical distance, since D_j is physical distance (not comoving)
             diff   = pos - pos_j
             r_sep  = np.sqrt(np.sum(diff**2, axis = 1))
             
-            #Compute the displacement needed
-            offset = self.model.displacement(r_sep/a_j, M_j, a_j, c = c_j) * a_j
+            #Compute the displacement needed. Convert input distance from physical --> comoving.
+            #Then convert the output from comoving --> physical since "pos" is in physical distance
+            offset = self.model.displacement(r_sep/a_j, M_j, a_j, **o_j) * a_j
             offset = offset[:, None] * (diff/r_sep[:, None]) #Add direction
             offset = np.where(np.isfinite(offset), offset, 0) #If offset is weird, set it to 0
             
@@ -145,9 +151,6 @@ class BaryonifyShell(DefaultRunner):
             #Accumulate the offsets in the UNIT VECTORS of the hpixels
             pix_offsets[pixind, :] += offset
         
-            
-        new_map = np.zeros(orig_map.size, dtype = float)
-        
         new_vec = np.stack( hp.pix2vec(NSIDE, np.arange(orig_map.size)), axis = 1) + pix_offsets
         new_ang = np.stack( hp.vec2ang(new_vec, lonlat = True), axis = 1)
         p_pix   = np.where(orig_map > 0)[0] #Only select regions with positive mass. Zero mass pixels don't matter
@@ -155,10 +158,15 @@ class BaryonifyShell(DefaultRunner):
         c_pix, c_weight = hp.get_interp_weights(NSIDE, new_ang[p_pix, 0], new_ang[p_pix, 1], lonlat = True)
         c_pix, c_weight = c_pix.T, c_weight.T
         
+        new_map = np.zeros(orig_map.size, dtype = float)
         new_map = regrid_pixels_hpix(new_map, orig_map[p_pix], c_pix, c_weight)
-        
-        self.output(new_map)
 
+        #Do a quick check that the sum is the same
+        new_sum = np.sum(new_map)
+        old_sum = np.sum(orig_map)
+        assert np.isclose(new_sum, old_sum), "ERROR in pixel regridding, sum(new_map) [%0.14e] != sum(oldmap) [%0.14e]" % (new_sum, old_sum)
+        
+        
         return new_map
     
 
@@ -166,28 +174,32 @@ class PaintProfilesShell(DefaultRunner):
 
     def process(self):
 
-        cosmo_fiducial = FlatwCDM(H0 = self.cosmo['h'] * 100. * u.km / u.s / u.Mpc,
-                                  Om0 = self.cosmo['Omega_m'], w0 = self.cosmo['w0'])
-
-
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
-                              Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
+                              Omega_b = self.cosmo['Omega_b'], h   = self.cosmo['h'],
                               sigma8  = self.cosmo['sigma8'],  n_s = self.cosmo['n_s'],
+                              w0      = self.cosmo['w0'],
                               matter_power_spectrum = 'linear')
         cosmo.compute_sigma()
-
-        healpix_inds = np.arange(hp.nside2npix(self.LightconeShell.NSIDE), dtype = int)
 
         orig_map = self.LightconeShell.map
         new_map  = np.zeros_like(orig_map).astype(np.float64)
         NSIDE    = self.LightconeShell.NSIDE
 
+        #Build interpolator between redshift and ang-diam-dist. Assume we never use z > 30
+        z_t = np.linspace(0, 30, 1000)
+        D_a = interpolate.CubicSpline(z_t, ccl.angular_diameter_distance(cosmo, 1/(1 + z_t)))
+        
+        keys = vars(self.model).get('p_keys', []) #Check if model has property keys
+
+        if len(keys) > 0:
+            txt = (f"You asked to use {keys} properties in Baryonification. You must pass a ParamTabulatedProfile"
+                   f"as the model. You have passed {type(self.model)} instead")
+            assert isinstance(self.model, ParamTabulatedProfile), txt
+
+
         assert self.model is not None, "You must provide a model"
         Baryons  = self.model
 
-        z_t = np.linspace(0, 30, 1000)
-        D_a = interpolate.interp1d(z_t, cosmo_fiducial.angular_diameter_distance(z_t).value)
-        
         for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
 
             M_j = self.HaloLightConeCatalog.cat['M'][j]
@@ -195,6 +207,7 @@ class PaintProfilesShell(DefaultRunner):
             a_j = 1/(1 + z_j)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
             D_j = D_a(z_j) #also physical Mpc since Ang. Diam. Dist.
+            o_j = {key : self.HaloLightConeCatalog.cat[key][j] for key in keys} #Other properties
             
             ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
             dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
@@ -210,12 +223,10 @@ class PaintProfilesShell(DefaultRunner):
             r_sep  = np.sqrt(np.sum(diff**2, axis = 1))
             
             #Compute the painted map
-            Paint  = Baryons.projected(cosmo, r_sep/a_j, M_j, a_j)
+            Paint  = Baryons.projected(cosmo, r_sep/a_j, M_j, a_j, **o_j)
             Paint  = np.where(np.isfinite(Paint), Paint, 0) #Set non-finite tSZ values to 0
             
             #Add the profiles to the new healpix map
             new_map[pixind] += Paint         
-
-        self.output(new_map)
 
         return new_map

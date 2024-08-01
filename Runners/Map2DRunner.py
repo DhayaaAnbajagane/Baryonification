@@ -184,9 +184,16 @@ class BaryonifyGrid(DefaultRunnerGrid):
         orig_map = self.GriddedMap.map
         new_map  = np.zeros(orig_map.shape, dtype = np.float64)
         bins     = self.GriddedMap.bins
+        
 
         orig_map_flat = orig_map.flatten()
         pix_offsets   = np.zeros([orig_map_flat.size, len(orig_map.shape)])
+        keys          = vars(self.model).get('p_keys', []) #Check if model has property keys
+
+        if len(keys) > 0:
+            txt = (f"You asked to use {keys} properties in Baryonification. You must pass a ParamTabulatedProfile"
+                   f"as the model. You have passed {type(self.model)} instead")
+            assert isinstance(self.model, ParamTabulatedProfile), txt
 
         for j in tqdm(range(self.HaloNDCatalog.cat.size), desc = 'Baryonifying matter', disable = not self.verbose):
 
@@ -194,10 +201,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
             x_j = self.HaloNDCatalog.cat['x'][j]
             y_j = self.HaloNDCatalog.cat['y'][j]
             z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
-            
-            #Other properties
-            keys = vars(self.model).get('p_keys', []) #Check if model has property keys
-            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} 
+            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} #Other properties
 
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
@@ -328,8 +332,6 @@ class BaryonifyGrid(DefaultRunnerGrid):
         old_sum = np.sum(orig_map_flat)
         assert np.isclose(new_sum, old_sum), "ERROR in pixel regridding, sum(new_map) [%0.14e] != sum(oldmap) [%0.14e]" % (new_sum, old_sum)
             
-        self.output(new_map)
-
         return new_map
 
 
@@ -358,7 +360,12 @@ class PaintProfilesGrid(DefaultRunnerGrid):
         
         grid = self.GriddedMap.grid
         bins = self.GriddedMap.bins
+        keys = vars(self.model).get('p_keys', []) #Check if model has property keys
 
+        if len(keys) > 0:
+            txt = (f"You asked to use {keys} properties in Baryonification. You must pass a ParamTabulatedProfile"
+                   f"as the model. You have passed {type(self.model)} instead")
+            assert isinstance(self.model, ParamTabulatedProfile), txt
 
         for j in tqdm(range(self.HaloNDCatalog.cat.size), desc = 'Painting field', disable = not self.verbose):
 
@@ -366,10 +373,7 @@ class PaintProfilesGrid(DefaultRunnerGrid):
             x_j = self.HaloNDCatalog.cat['x'][j]
             y_j = self.HaloNDCatalog.cat['y'][j]
             z_j = self.HaloNDCatalog.cat['z'][j] #THIS IS A CARTESIAN COORDINATE, NOT REDSHIFT
-
-            #Other properties
-            keys = vars(self.model).get('p_keys', []) #Check if model has property keys
-            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} 
+            o_j = {key : self.HaloNDCatalog.cat[key][j] for key in keys} #Other properties
             
             a_j = 1/(1 + self.HaloNDCatalog.redshift)
             R_j = self.mass_def.get_radius(cosmo, M_j, a_j) / a_j #in comoving Mpc
@@ -462,8 +466,6 @@ class PaintProfilesGrid(DefaultRunnerGrid):
             new_map[inds] += Painting
             
         new_map = new_map.reshape(orig_map.shape)
-
-        self.output(new_map)
 
         return new_map
     
@@ -591,8 +593,6 @@ class PaintProfilesAnisGrid(DefaultRunnerGrid):
             new_map[inds] += Painting
              
         new_map = new_map.reshape(orig_map.shape)
-
-        self.output(new_map)
 
         return new_map
     
