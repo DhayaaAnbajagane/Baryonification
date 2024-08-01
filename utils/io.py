@@ -10,27 +10,20 @@ class HaloLightConeCatalog(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, ra = None, dec = None, M = None, z = None, path = None, cosmo = None, **arrays):
+    def __init__(self, ra, dec, M, z, cosmo, **arrays):
 
-        if (path is None) & ((ra is None) | (dec is None) | (M is None) |(z is None)):
-
-            raise ValueError("Need to provide either path to file, or provide all of ra, dec, halo mass and halo redshift")
-
-        elif (isinstance(ra, np.ndarray) & isinstance(dec, np.ndarray) &
-              isinstance(z, np.ndarray)  & isinstance(M, np.ndarray)):
-
-            dtype = [('M', '>f'), ('z', '>f'), ('ra', '>f'), ('dec', '>f')]
-            dtype = dtype + [(name, '>f') for name, arr in arrays.items()]
-                
-            N   = 1 if not isinstance(ra, (list, np.ndarray, tuple)) else len(ra)
-            cat = np.zeros(len(ra), dtype)
-
-            cat['ra']  = ra
-            cat['dec'] = dec
-            cat['z']   = z
-            cat['M']   = M
+        dtype = [('M', '>f'), ('z', '>f'), ('ra', '>f'), ('dec', '>f')]
+        dtype = dtype + [(name, '>f') for name, arr in arrays.items()]
             
-            for name, arr in arrays.items(): cat[name] = arr
+        N   = 1 if not isinstance(ra, (list, np.ndarray, tuple)) else len(ra)
+        cat = np.zeros(len(ra), dtype)
+
+        cat['ra']  = ra
+        cat['dec'] = dec
+        cat['z']   = z
+        cat['M']   = M
+        
+        for name, arr in arrays.items(): cat[name] = arr
 
         self.cat   = cat
 
@@ -62,10 +55,21 @@ class HaloLightConeCatalog(object):
                         
         other = {}
         for k in self.cat.dtype.names:
-            if k not in ['x', 'y', 'z', 'M']:
+            if k not in ['ra', 'dec', 'M', 'z']:
                 other[k] = self.cat[k][key]
         
-        return HaloLightConeCatalog(ra, dec, M, z, self.cosmo, **other)
+        return HaloLightConeCatalog(ra = ra, dec = dec, M = M, z = z, cosmo = self.cosmo, **other)
+
+    
+    def __str__(self):
+        
+        string = f"""
+HaloLightConeCatalog with {self.cat.size} Halos at {self.cat['z'].min()} < z < {self.cat['z'].max()}.
+Minimum log10(Mass) = {np.log10(self.cat['M'].min())}
+Maximum log10(Mass) = {np.log10(self.cat['M'].max())}
+Cosmology set to {self.cosmo}.
+        """
+        return string.strip()
     
 
 class HaloNDCatalog(object):
@@ -75,7 +79,7 @@ class HaloNDCatalog(object):
     Used in baryonification pipeline
     '''
 
-    def __init__(self, x = None, y = None, z = None, M = None, redshift = None, cosmo = None, **arrays):
+    def __init__(self, x, y, z, M, redshift, cosmo, **arrays):
 
         dtype = [('M', '>f'), ('x', '>f'), ('y', '>f'), ('z', '>f')]
         dtype = dtype + [(name, '>f', arr.shape[1:] if len(arr.shape) > 1 else '') for name, arr in arrays.items()]
@@ -125,16 +129,16 @@ class HaloNDCatalog(object):
             if k not in ['x', 'y', 'z', 'M']:
                 other[k] = self.cat[k][key]
         
-        return HaloNDCatalog(x, y, z, M, self.redshift, self.cosmo, **other)
+        return HaloNDCatalog(x = x, y = y, z = z, N = M, redshift = self.redshift, cosmo = self.cosmo, **other)
     
     
     def __str__(self):
         
         string = f"""
-        HaloNDCatalog with {self.cat.size} Halos at z = {self.redshift}.
-        Minimum Mass = {self.cat['M'].min()}
-        Maximum Mass = {self.cat['M'].max()}
-        Cosmology set to {self.cosmo}.
+HaloNDCatalog with {self.cat.size} Halos at z = {self.redshift}.
+Minimum log10(Mass) = {np.log10(self.cat['M'].min())}
+Maximum log10(Mass) = {np.log10(self.cat['M'].max())}
+Cosmology set to {self.cosmo}.
         """
         return string.strip()
     

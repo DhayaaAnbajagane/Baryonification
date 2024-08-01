@@ -41,11 +41,11 @@ class SplitJoinParallel(object):
     Adds/joins all the maps together in the end.
     '''
 
-    def __init__(self, Runner, seeds = None, njobs = -1):
+    def __init__(self, Runner, njobs = -1):
         
         self.Runner = Runner
-        self.seeds = None
-        self.njobs = njobs if njobs != -1 else joblib.externals.loky.cpu_count()
+        self.seed   = 42 #We only use seed for a single thing, so I've hardcoded it here
+        self.njobs  = njobs if njobs != -1 else joblib.externals.loky.cpu_count()
         
         self.Runner_list = self.split_run(self.Runner)
         
@@ -58,6 +58,7 @@ class SplitJoinParallel(object):
         model    = Runner.model
         mass_def = Runner.mass_def
         eps_max  = Runner.epsilon_max
+        ellip    = Runner.use_ellipticity
         
         #Now split
         
@@ -65,6 +66,11 @@ class SplitJoinParallel(object):
         Nsplits   = self.njobs
         Ntotal    = len(catalog)
         Npersplit = int(np.ceil(Ntotal/Nsplits))
+
+        #Randomize catalog ordering. This helps optimize the parallelization. Else if 
+        #low redshift halos are all the start, then handful of processes will be overburdened 
+        #while the rest are just sitting idle.
+        HaloCat     = HaloCat[np.random.default_rng(self.seed).choice(Ntotal, size = Ntotal, replace = False)] 
         
         empty_shell = type(Shell)(map = np.zeros_like(Shell.map), cosmo = cosmo)
         
@@ -80,7 +86,7 @@ class SplitJoinParallel(object):
             
             #Create a new Runner for just a subset of catalog. Has same model, map size etc.
             #Force verbose to be off as we don't want outputs for each subrun of parallel process.
-            New_Runner = type(Runner)(New_HaloCatalog, empty_shell, eps_max, model, mass_def, verbose = False)
+            New_Runner = type(Runner)(New_HaloCatalog, empty_shell, eps_max, model, ellip, mass_def, verbose = False)
             
             Runner_list.append(New_Runner)
         
