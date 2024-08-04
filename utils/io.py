@@ -1,6 +1,6 @@
 import numpy as np
 import healpy as hp
-import pyccl as ccl
+import warnings
 
 
 class HaloLightConeCatalog(object):
@@ -12,12 +12,18 @@ class HaloLightConeCatalog(object):
 
     def __init__(self, ra, dec, M, z, cosmo, **arrays):
 
-        dtype = [('M', '>f'), ('z', '>f'), ('ra', '>f'), ('dec', '>f')]
-        dtype = dtype + [(name, '>f') for name, arr in arrays.items()]
+        t     = np.float64
+        dtype = [('M', t), ('z', t), ('ra', t), ('dec', t)]
+        dtype = dtype + [(name, t) for name, arr in arrays.items()]
             
         N   = 1 if not isinstance(ra, (list, np.ndarray, tuple)) else len(ra)
         cat = np.zeros(len(ra), dtype)
 
+        if np.any(np.abs(dec) == 90):
+            dec = dec.astype(t) #Need to upgrade type so the subtraction below is still accurate
+            warnings.warn("Some halos found with declination exactly at the poles. Offsetting these by 4e-5 arcsec")
+            dec = np.clip(dec, -90 + 1e-8, 90 - 1e-8)
+        
         cat['ra']  = ra
         cat['dec'] = dec
         cat['z']   = z
