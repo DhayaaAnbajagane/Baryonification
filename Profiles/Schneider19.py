@@ -97,7 +97,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         cdelta   = 1 if self.cdelta is None else self.cdelta
         
         M_c      = self.M_c * (1 + z)**self.nu_M_c * cdelta**self.zeta_M_c
-        beta     = 3*(M/self.M_c)**self.mu_beta / (1 + (M/self.M_c)**self.mu_beta)
+        beta     = 3*(M/M_c)**self.mu_beta / (1 + (M/M_c)**self.mu_beta)
         
         #Use M_c as the mass-normalization for simplicity sake
         theta_ej = self.theta_ej * (M/self.M_theta_ej)**self.mu_theta_ej * (1 + z)**self.nu_theta_ej * cdelta**self.zeta_theta_ej
@@ -164,7 +164,9 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         if np.ndim(M) == 0:
             proj_prof = np.squeeze(proj_prof, axis=0)
 
-        assert np.all(proj_prof >= 0), "Something went wrong. Profile is negative in some places"
+        if np.any(proj_prof <= 0):
+            warnings.warn("WARNING: Profile is zero/negative in some places."
+                          "Likely a convolution artifact for objects smaller than the pixel scale")
 
         return proj_prof
     
