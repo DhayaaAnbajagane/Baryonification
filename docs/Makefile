@@ -6,9 +6,9 @@
 SPHINXOPTS    ?=
 SPHINXBUILD   ?= sphinx-build
 SPHINXAPIDOC  ?= sphinx-apidoc
-SOURCEDIR     = ./docs/source
-BUILDDIR      = ./docs/build
-PACKAGEDIR    = ./  #our package is in root
+SOURCEDIR     = ./source
+BUILDDIR      = .build
+PACKAGEDIR    = ../  #our package is in root
 
 # Put it first so that "make" without argument is like "make help".
 help:
@@ -20,11 +20,13 @@ help:
 apidoc:
 	@$(SPHINXAPIDOC) -o "$(SOURCEDIR)" "$(PACKAGEDIR)"
 
-# Catch-all target: route all unknown targets to Sphinx using the new
-# "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
-%: Makefile
-	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
-
 # Override the html target to include apidoc
 html: apidoc
 	@$(SPHINXBUILD) -M html "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+# Catch-all target: route all unknown targets to Sphinx using the new
+# "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
+%: Makefile apidoc
+	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+
