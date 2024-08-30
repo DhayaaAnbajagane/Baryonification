@@ -17,6 +17,8 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.napoleon',  # optional: for Google-style and NumPy-style docstrings
+    'sphinx.ext.viewcode',  # optional: to include links to the source code
 ]
 
 intersphinx_mapping = {
