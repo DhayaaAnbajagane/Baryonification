@@ -1,18 +1,5 @@
 # Configuration file for the Sphinx documentation builder.
 
-import os
-import subprocess
-
-def run_apidoc(_):
-    source_dir = os.path.abspath('.')
-    package_dir = os.path.abspath('../../')
-    output_dir = source_dir
-    cmd_path = 'sphinx-apidoc'
-    subprocess.check_call([cmd_path, '-o', output_dir, package_dir, '--force'])
-
-def setup(app):
-    app.connect('builder-inited', run_apidoc)
-
 # -- Project information
 
 project = 'Baryonification'
