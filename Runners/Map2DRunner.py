@@ -5,14 +5,47 @@ import pyccl as ccl
 from scipy import interpolate
 from tqdm import tqdm
 from numba import njit
+from ..utils import ParamTabulatedProfile
 
 MY_FILL_VAL = np.NaN
 
 from ..utils.debug import log_time
 
+__all__ = ['DefaultRunnerGrid', 'BaryonifyGrid', 'PaintProfilesGrid', 'regrid_pixels_2D', 'regrid_pixels_3D']
 
 @njit
 def regrid_pixels_2D(grid, pix_positions, pix_values):
+
+    """
+    Redistributes pixel values onto a 2D (regular, square) grid considering periodic boundary conditions.
+
+    This function takes a list of pixel positions and their associated values, then redistributes these 
+    values onto a specified 2D grid. It accounts for overlap and periodic boundary conditions, ensuring 
+    proper handling of edge cases where offsets are significantly larger than the grid size.
+
+    Parameters
+    ----------
+    grid : ndarray
+        A 2D numpy array representing the grid onto which pixel values will be redistributed. 
+        The grid is modified in place. Must be a square grid.
+
+    pix_positions : ndarray of shape (N, 2)
+        An array of pixel positions, where each position is given by (x, y) coordinates. 
+        These coordinates specify where the displaced pixels are located.
+
+    pix_values : ndarray of shape (N,)
+        An array of pixel values corresponding to each position in `pix_positions`. 
+        These values are redistributed across the grid based on the pixel's overlap
+        with the grid.
+
+    Notes
+    -----
+    - The function uses Numba's `@njit` decorator for just-in-time compilation, optimizing performance.
+    - Periodic boundary conditions are handled explicitly to ensure proper wrapping around the grid edges.
+    - This function assumes that both `grid` and `pix_positions` use a zero-based index system and that 
+      the grid is square with shape `(N, N)`.
+
+    """
 
     for pix_pos, pix_value in zip(pix_positions, pix_values):
 
@@ -43,6 +76,36 @@ def regrid_pixels_2D(grid, pix_positions, pix_values):
 
 @njit
 def regrid_pixels_3D(grid, pix_positions, pix_values):
+
+    """
+    Redistributes pixel values onto a 3D grid considering periodic boundary conditions.
+
+    This function takes a list of 3D pixel positions and their associated values, then redistributes 
+    these values onto a specified 3D grid. It accounts for overlap and periodic boundary conditions, 
+    ensuring proper handling of edge cases where offsets are significantly larger than the grid size.
+
+    Parameters
+    ----------
+    grid : ndarray
+        A 3D numpy array representing the grid onto which pixel values will be redistributed. 
+        The grid is modified in place. Must be a cubic grid.
+
+    pix_positions : ndarray of shape (N, 3)
+        An array of pixel positions, where each position is given by (x, y, z) coordinates. 
+        These coordinates specify where the displaced pixels are located.
+
+    pix_values : ndarray of shape (N,)
+        An array of pixel values corresponding to each position in `pix_positions`. 
+        These values are redistributed across the grid based on overlap.
+
+    Notes
+    -----
+    - The function uses Numba's `@njit` decorator for just-in-time compilation, optimizing performance.
+    - Periodic boundary conditions are handled explicitly to ensure proper wrapping around the grid edges.
+    - This function assumes that both `grid` and `pix_positions` use a zero-based index system and that 
+      the grid is cubic with shape `(N, N, N)`.
+
+    """
 
     for pix_pos, pix_value in zip(pix_positions, pix_values):
 
@@ -82,9 +145,83 @@ regrid_pixels_3D(np.zeros([5, 5, 5]), np.ones([2, 3]), np.ones(2))
 
                         
 class DefaultRunnerGrid(object):
-    '''
-    A class that contains relevant utils for input/output
-    '''
+    """
+    A utility class for handling input/output operations related to halo ND catalogs and gridded maps.
+
+    The `DefaultRunnerGrid` class provides methods to manage and process data associated with halo ND catalogs,
+    including constructing rotation matrices and generating coordinate arrays. It supports operations in both
+    2D and 3D contexts and handles optional ellipticity-based calculations.
+
+    Parameters
+    ----------
+    HaloNDCatalog : object
+        An instance of a `HaloNDCatalog`, containing data about halos and their properties. It must have a 
+        `cosmology` attribute to specify the cosmological parameters.
+    
+    GriddedMap : object
+        An instance representing a `GriddedMap`, either 2D or 3D, where halo information will be mapped.
+    
+    epsilon_max : float
+        A parameter specifying the maximum size, in units of halo radius, of cutouts made around
+        each halo during painting/baryonification.
+    
+    model : object, optional
+        An object that generates profiles or displacements. For example, see `Baryonification2D` or `Pressure`
+    
+    use_ellipticity : bool, optional
+        A flag indicating whether to use ellipticity in calculations. Default is False. 
+        If set to True, a NotImplementedError is raised, as this mode has not yet been 
+        implemented for curved, full-sky baryonification.
+    
+    mass_def : object, optional
+        An instance of a mass definition object from the CCL (Core Cosmology Library), specifying 
+        the mass definition to be used. Default is `ccl.halos.massdef.MassDef(200, 'critical')`.
+    
+    verbose : bool, optional
+        A flag to enable verbose output for logging or debugging purposes. Default is True.
+
+    Attributes
+    ----------
+    HaloNDCatalog : object
+        The `HaloNDCatalog` instance.
+    
+    GriddedMap : object
+        The `GriddedMap` instance.
+    
+    cosmo : object
+        The cosmology object extracted from `HaloNDCatalog`.
+    
+    model : object
+        The model used for baryonification or profile painting.
+    
+    epsilon_max : float
+        The maximum radius, in halo radius units, of cutouts around halos.
+    
+    mass_def : object
+        The mass definition object.
+    
+    verbose : bool
+        Whether verbose output is enabled.
+    
+    use_ellipticity : bool
+        Whether to use ellipticity in calculations.
+
+    Methods
+    -------
+    build_Rmat(A, q)
+        Constructs a rotation matrix based on the input vector A and ellipticity parameter q.
+    
+    coord_array(*args)
+        Flattens and stacks input arrays into a 2D array of coordinates.
+
+    Raises
+    ------
+    AssertionError
+        If `use_ellipticity` is True and required columns ('q_ell', 'c_ell', 'A_ell') are missing in the 
+        `HaloNDCatalog`.
+    NotImplementedError
+        If attempting to use the 3D ellipticity method, which is not yet verified.
+    """
     
     def __init__(self, HaloNDCatalog, GriddedMap, epsilon_max, model = None, use_ellipticity = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
@@ -112,6 +249,33 @@ class DefaultRunnerGrid(object):
     
     
     def build_Rmat(self, A, q):
+        """
+        Constructs a rotation matrix based on the input vector and ellipticity parameter.
+
+        This method normalizes the input vector A and calculates the rotation matrix using
+        the ellipticity parameter q. For 2D vectors, it uses the shear transformation. For 
+        3D vectors, a not yet verified method is provided but raises a NotImplementedError.
+
+        Parameters
+        ----------
+        A : ndarray
+            A 1D array representing the vector to be rotated. It will be normalized within the method.
+        
+        q : float
+            The ellipticity parameter, used to compute the shear transformation.
+
+        Returns
+        -------
+        Rmat : ndarray
+            A 2x2 or 3x3 rotation matrix, depending on the dimensionality of the input vector.
+
+        Raises
+        ------
+        ValueError
+            If the input vector A is 1-dimensional.
+        NotImplementedError
+            If a 3D rotation is attempted, indicating that the method is not yet verified for 3D vectors.
+        """
 
         A /= np.linalg.norm(A)
 
@@ -156,15 +320,77 @@ class DefaultRunnerGrid(object):
         return Rmat
         
     def coord_array(self, *args):
+        """
+        Flattens and stacks input arrays into a 2D array of coordinates.
+
+        This method takes multiple input arrays, flattens each, and stacks them column-wise to
+        create a single 2D array where each row represents a coordinate.
+
+        Parameters
+        ----------
+        *args : list of ndarrays
+            Arrays to be flattened and stacked. Each input array represents one dimension of the 
+            coordinates. All arrays must have the same shape.
+
+        Returns
+        -------
+        coords : ndarray
+            A 2D array of shape (N, M) where N is the total number of elements (after flattening) and M
+            is the number of input arrays. Each row represents a coordinate.
+        """
 
         return np.vstack([a.flatten() for a in args]).T
 
     
+
 class BaryonifyGrid(DefaultRunnerGrid):
 
+    """
+    A class to apply baryonification to a gridded map using a halo catalog.
+
+    The `BaryonifyGrid` class inherits from `DefaultRunnerGrid` and is designed to process a gridded map by
+    applying baryonification techniques to adjust the matter distribution. It uses a halo catalog to determine
+    the necessary adjustments based on halo properties, cosmological parameters, and a specified model.
+
+    The inputted grid should be MASS grid rather than density grid. This is because the method uses
+    pix = 0 to identify empty pixels.
+
+    Methods
+    -------
+    process()
+        Processes the gridded map by applying baryonification and returns the modified grid.
+
+    pick_indices(center, width, Npix)
+        Helper method that selects and returns indices around a center point, 
+        accounting for periodic boundary conditions.
+
+    """
     
     
     def pick_indices(self, center, width, Npix):
+        """
+        Selects and returns indices around a center point, accounting for periodic boundary conditions.
+
+        This method takes a central index and a width and returns an array of indices around the center,
+        wrapping around if the indices go beyond the boundaries of the grid. This is used to get
+        cutouts around a given halo.
+
+        Parameters
+        ----------
+        center : int
+            The central index around which indices are selected.
+
+        width : int
+            The half-width of the selection range. The method selects indices from `center - width` to `center + width`.
+
+        Npix : int
+            The total number of pixels along one dimension of the grid. Used to wrap indices for periodic boundary conditions.
+
+        Returns
+        -------
+        inds : ndarray
+            An array of selected indices, wrapped around the boundaries if necessary.
+        """
         
         inds = np.arange(center - width, center + width)
         inds = np.where((inds) < 0,     inds + Npix, inds)
@@ -173,6 +399,34 @@ class BaryonifyGrid(DefaultRunnerGrid):
         return inds
     
     def process(self):
+        """
+        Applies baryonification to the gridded map using the halo catalog.
+
+        This method iterates over each halo in the `HaloNDCatalog`, calculating the necessary
+        displacements based on the halo's mass, position, and other properties. It uses the given model to
+        compute the displacement, updates the gridded map accordingly, and ensures that the total mass
+        remains conserved.
+
+        Returns
+        -------
+        new_map : ndarray
+            A 2D or 3D numpy array representing the modified grid after baryonification.
+
+        Raises
+        ------
+        AssertionError
+            If the sum of the new map values does not match the sum of the original map values, 
+            indicating an error in pixel regridding.
+
+        NotImplementedError
+            If the 3D ellipticity method is attempted, which is currently not supported.
+
+        Notes
+        -----
+        - This method supports both 2D and 3D gridded maps.
+        - The `ParamTabulatedProfile` model is required if property keys are used in the model.
+        - Non-finite displacement values are set to zero to avoid issues with map updates.
+        """
 
         
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
@@ -336,9 +590,46 @@ class BaryonifyGrid(DefaultRunnerGrid):
 
 
 class PaintProfilesGrid(DefaultRunnerGrid):
+    """
+    A class to paint profiles onto a gridded map using a halo catalog.
+
+    The `PaintProfilesGrid` class inherits from `DefaultRunnerGrid` and is designed to generated a grid
+    of a given property (mass, temperature, pressure) by painting halo profiles. It uses a halo catalog to 
+    determine the necessary profiles based on halo properties, cosmological parameters, and a specified model.
+
+    Methods
+    -------
+    process()
+        Processes the gridded map by painting baryonic profiles and returns the modified grid.
+    pick_indices(center, width, Npix)
+        Helper function that Selects and returns indices around a center point, 
+        accounting for periodic boundary conditions.
+    """
 
     
     def pick_indices(self, center, width, Npix):
+        """
+        Selects and returns indices around a center point, accounting for periodic boundary conditions.
+
+        This method takes a central index and a width and returns an array of indices around the center,
+        wrapping around if the indices go beyond the boundaries of the grid.
+
+        Parameters
+        ----------
+        center : int
+            The central index around which indices are selected.
+
+        width : int
+            The half-width of the selection range. The method selects indices from `center - width` to `center + width`.
+
+        Npix : int
+            The total number of pixels along one dimension of the grid. Used to wrap indices for periodic boundary conditions.
+
+        Returns
+        -------
+        inds : ndarray
+            An array of selected indices, wrapped around the boundaries if necessary.
+        """
         
         inds = np.arange(center - width, center + width)
         inds = np.where((inds) < 0,     inds + Npix, inds)
@@ -348,6 +639,33 @@ class PaintProfilesGrid(DefaultRunnerGrid):
     
     
     def process(self):
+        """
+        Applies profile painting to the gridded map using the halo catalog.
+
+        This method iterates over each halo in the `HaloNDCatalog`, calculating the profile
+        contributions based on the halo's mass, position, and other properties. It uses the provided model to
+        compute the profile and updates the gridded map accordingly.
+
+        Returns
+        -------
+        new_map : ndarray
+            A 2D or 3D numpy array representing the modified grid after painting the baryonic profiles.
+
+        Raises
+        ------
+        AssertionError
+            If a model is not provided or if the provided model is not an instance of `ParamTabulatedProfile`
+            when property keys are used.
+
+        ValueError
+            If `use_ellipticity` is True and the 3D map painting method is attempted, which is currently not supported.
+
+        Notes
+        -----
+        - This method supports both 2D and 3D gridded maps.
+        - The `ParamTabulatedProfile` model is required if property keys are used in the model.
+        - Non-finite profile values are set to zero to avoid issues with map updates.
+        """
 
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
                               Omega_b = self.cosmo['Omega_b'], h = self.cosmo['h'],
@@ -472,7 +790,6 @@ class PaintProfilesGrid(DefaultRunnerGrid):
 
 
 class PaintProfilesAnisGrid(DefaultRunnerGrid):
-
 
     def __init__(self, HaloNDCatalog, GriddedMap, epsilon_max, Painting_model = None, Canvas_model = None, Nbin_interp = 1_000,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):

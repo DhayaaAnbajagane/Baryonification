@@ -5,29 +5,59 @@ import healpy as hp
 from numba import njit
 
 from scipy import interpolate
-from astropy.cosmology import FlatwCDM
-from astropy import units as u
-from astropy.io import fits
-
 from tqdm import tqdm
 from ..utils import ParamTabulatedProfile
 
 MY_FILL_VAL = np.NaN
 
+__all__ = ['DefaultRunner', 'BaryonifyShell', 'PaintProfilesShell', 'regrid_pixels_hpix']
 
 @njit
 def regrid_pixels_hpix(hmap, parent_pix_vals, child_pix, child_weights):
-    '''
-    Function that quickly assigns displaced healpix pixels back to the original
-    map grid.
-    
-    hmap: new array that is the healpix map to assign pixels to
-    parent_pix_vals: the values of the shifted pixels
-    child_pix: the 4 hmap pixels that each displaced pixel contribute to
-    child_weight: the weight of the contribution to each of the 4 pixels.
-    
-    In practice, get child_pix and child_weight from hp.interp_values().
-    '''
+    """
+    Reassigns displaced HEALPix pixels back to the original map grid.
+
+    This function modifies a HEALPix map (`hmap`) by redistributing pixel values
+    from displaced pixels (`parent_pix_vals`) to their corresponding positions
+    in the original grid. Each displaced pixel's value contributes to four 
+    neighboring pixels, determined by `child_pix`, with contributions weighted 
+    by `child_weights`.
+
+    Parameters
+    ----------
+    hmap : ndarray
+        The HEALPix map array to which the displaced pixel values will be assigned.
+        This array will be modified in place by having values added to it.
+
+    parent_pix_vals : ndarray of shape (N,)
+        The array containing the values of displaced pixels. These are the values
+        to be re-assigned to the original map grid.
+
+    child_pix : ndarray of shape (N, 4)
+        A 2D array where N is the number of displaced pixels. Each row contains the 
+        indices of the four pixels in `hmap` to which the corresponding displaced 
+        pixel contributes.
+
+    child_weights : ndarray of shape (N, 4)
+        A 2D array where N is the number of displaced pixels. Each row contains the 
+        weights of the contributions of the corresponding displaced pixel to the four 
+        pixels in `hmap`. The weights should sum to 1 for each displaced pixel.
+
+    Returns
+    -------
+    hmap : ndarray
+        The modified HEALPix map with the displaced pixel values assigned back
+        to the original grid.
+
+    Notes
+    -----
+    - This function utilizes Numba's `@njit` decorator for just-in-time compilation,
+      optimizing performance.
+    - The `child_pix` and `child_weights` arrays can be obtained using 
+      `hp.interp_values()` from the HEALPix library.
+    - The code runs this function once before import so that it's already compiled and
+      ready for the njit speedup
+    """
     
     for i in range(parent_pix_vals.size):
 
@@ -39,14 +69,86 @@ def regrid_pixels_hpix(hmap, parent_pix_vals, child_pix, child_weights):
     return hmap
 
 #Quickly run the function once so it compiles and initializes
-# regrid_pixels_hpix(np.zeros([5, 5]), np.ones([2, 2]), np.ones([]))
-                    
+regrid_pixels_hpix(np.zeros(10), np.ones(5), np.ones([5, 4], dtype = int), np.ones([5, 4]) * 0.25)
+
+
+
 class DefaultRunner(object):
-    '''
-    A class that contains relevant utils for input/output
-    '''
+    """
+    A utility class for handling input/output operations related to halo lightcone catalogs and lightcone shells.
+
+    This class provides methods for managing and processing data associated with halo lightcone catalogs,
+    including constructing rotation matrices and generating coordinate arrays.
+
+    Parameters
+    ----------
+    HaloLightConeCatalog : object
+        An instance of a halo lightcone catalog, which contains data about the halos and their properties.
+        It must have a `cosmology` attribute to specify the cosmological parameters.
     
-    def __init__(self, HaloLightConeCatalog, LightconeShell, epsilon_max, model = None, use_ellipticity = False,
+    LightconeShell : object
+        An instance of a lightcone shell, representing a thin shell in the lightcone where halos are located.
+    
+    epsilon_max : float
+        A parameter specifying the maximum size, in units of halo radius, of cutouts made around
+        each halo during painting/baryonification.
+    
+    model : object, optional
+        An object that generates profiles or displacements. For example, see `Baryonification2D` or `Pressure`
+    
+    use_ellipticity : bool, optional
+        A flag indicating whether to use ellipticity in calculations. Default is False. 
+        If set to True, a NotImplementedError is raised, as this mode has not yet been 
+        implemented for curved, full-sky baryonification.
+    
+    mass_def : object, optional
+        An instance of a mass definition object from the CCL (Core Cosmology Library), specifying 
+        the mass definition to be used. Default is `ccl.halos.massdef.MassDef(200, 'critical')`.
+    
+    verbose : bool, optional
+        A flag to enable verbose output for logging or debugging purposes. Default is True.
+
+    Attributes
+    ----------
+    HaloLightConeCatalog : object
+        The halo lightcone catalog instance.
+    
+    LightconeShell : object
+        The lightcone shell instance.
+    
+    cosmo : object
+        The cosmology object extracted from `HaloLightConeCatalog`.
+    
+    model : object
+        The model used for baryonification or profile painting.
+    
+    epsilon_max : float
+        The maximum radius, in halo radius units, of cutouts around halos.
+    
+    mass_def : object
+        The mass definition object.
+    
+    verbose : bool
+        Whether verbose output is enabled.
+    
+    use_ellipticity : bool
+        Whether to use ellipticity in calculations.
+
+    Methods
+    -------
+    build_Rmat(A, ref)
+        Constructs a 2x2 rotation matrix to rotate vector A to align with the reference vector ref.
+    
+    coord_array(*args)
+        Flattens and stacks input arrays into a 2D array of coordinates.
+
+    Raises
+    ------
+    NotImplementedError
+        If `use_ellipticity` is set to True.
+    """
+    
+    def __init__(self, HaloLightConeCatalog, LightconeShell, epsilon_max, model, use_ellipticity = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloLightConeCatalog = HaloLightConeCatalog
@@ -66,6 +168,26 @@ class DefaultRunner(object):
     
     
     def build_Rmat(self, A, ref):
+        """
+        Constructs a 2x2 rotation matrix to rotate vector A to align with the reference vector `ref`.
+
+        This method normalizes both input vectors and computes the rotation angle required to align
+        vector A with the reference vector ref. It then constructs and returns the corresponding
+        rotation matrix.
+
+        Parameters
+        ----------
+        A : ndarray
+            A 1D array representing the vector to be rotated. It will be normalized within the method.
+        
+        ref : ndarray
+            A 1D array representing the reference vector to which A is to be aligned. It will also be normalized.
+
+        Returns
+        -------
+        Rmat : ndarray
+            A 2x2 rotation matrix that rotates vector A to align with vector ref.
+        """
 
         A   /= np.linalg.norm(A)
         ref /= np.linalg.norm(ref)
@@ -78,13 +200,72 @@ class DefaultRunner(object):
 
 
     def coord_array(self, *args):
+        """
+        Flattens and stacks input arrays into a 2D array of coordinates.
+
+        This method takes multiple input arrays, flattens each, and stacks them column-wise to
+        create a single 2D array where each row represents a coordinate.
+
+        Parameters
+        ----------
+        *args : list of ndarrays
+            Arrays to be flattened and stacked. Each input array represents one dimension of the 
+            coordinates. All arrays must have the same shape.
+
+        Returns
+        -------
+        coords : ndarray
+            A 2D array of shape (N, M) where N is the total number of elements (after flattening) and M
+            is the number of input arrays. Each row represents a coordinate.
+        """
 
         return np.vstack([a.flatten() for a in args]).T
     
 
 class BaryonifyShell(DefaultRunner):
+    """
+    A class to apply baryonification to lightcone shells using a halo catalog.
+
+    The `BaryonifyShell` class inherits from `DefaultRunner` and is designed to process a lightcone shell
+    by applying baryonification techniques to adjust the matter distribution. It uses a halo catalog to 
+    determine the necessary adjustments based on halo properties, cosmological parameters, and a specified model.
+
+    The input maps should be MASS maps rather than density maps. This is because the method uses
+    pix = 0 to identify empty pixels.
+
+    Methods
+    -------
+    process()
+        Processes the lightcone shell by applying baryonification and returns the modified HEALPix map.
+    """
 
     def process(self):
+        """
+        Applies baryonification to the lightcone shell using the halo catalog.
+
+        This method iterates over each halo in the `HaloLightConeCatalog`, calculating the necessary
+        displacements based on the halo's mass, redshift, and position. It uses the given `model` to
+        compute the displacement, updates the HEALPix map accordingly, and ensures that the total mass
+        remains consistent.
+
+        Returns
+        -------
+        new_map : ndarray
+            A 1D numpy array representing the modified HEALPix map after baryonification.
+
+        Raises
+        ------
+        AssertionError
+            If the sum of the new map values does not match the sum of the original map values, 
+            indicating an error in pixel regridding.
+        
+        Notes
+        -----
+        - This method assumes flat cosmologies for distance calculations.
+        - A `ParamTabulatedProfile` model is required if any property keys (eg. `cdelta`) are used in the model.
+        - The method performs a quick check to ensure mass conservation by comparing the sum of the 
+          new map with the original map.
+        """
 
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
                               Omega_b = self.cosmo['Omega_b'], h   = self.cosmo['h'],
@@ -172,7 +353,43 @@ class BaryonifyShell(DefaultRunner):
 
 class PaintProfilesShell(DefaultRunner):
 
+    """
+    A class to apply profile painting to a lightcone shell using a halo catalog.
+
+    The `PaintProfilesShell` class inherits from `DefaultRunner` and is designed to process a lightcone shell
+    by painting profiles to the map based on a given model and halo properties.
+
+    Methods
+    -------
+    process()
+        Processes the lightcone shell by painting baryonic profiles and returns the modified HEALPix map.
+    """
+
     def process(self):
+        """
+        Applies profile painting to the lightcone shell using the halo catalog.
+
+        This method iterates over each halo in the `HaloLightConeCatalog`, calculating the profile
+        contributions based on the halo's mass, redshift, and position. It uses the provided model to
+        compute the profile and updates the HEALPix map accordingly.
+
+        Returns
+        -------
+        new_map : ndarray
+            A 1D numpy array representing the modified HEALPix map after painting the baryonic profiles.
+
+        Raises
+        ------
+        AssertionError
+            If a model is not provided or if the provided model is not an instance of `ParamTabulatedProfile`
+            when property keys are used.
+
+        Notes
+        -----
+        - This method assumes flat cosmologies for distance calculations.
+        - The `ParamTabulatedProfile` model is required if property keys are used in the model.
+        - Non-finite profile values are set to zero before adding profiles to the map.
+        """
 
         cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
                               Omega_b = self.cosmo['Omega_b'], h   = self.cosmo['h'],
@@ -200,7 +417,7 @@ class PaintProfilesShell(DefaultRunner):
         assert self.model is not None, "You must provide a model"
         Baryons  = self.model
 
-        for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting SZ', disable = not self.verbose):
+        for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting Profile', disable = not self.verbose):
 
             M_j = self.HaloLightConeCatalog.cat['M'][j]
             z_j = self.HaloLightConeCatalog.cat['z'][j]
@@ -224,7 +441,7 @@ class PaintProfilesShell(DefaultRunner):
             
             #Compute the painted map
             Paint  = Baryons.projected(cosmo, r_sep/a_j, M_j, a_j, **o_j)
-            Paint  = np.where(np.isfinite(Paint), Paint, 0) #Set non-finite tSZ values to 0
+            Paint  = np.where(np.isfinite(Paint), Paint, 0) #Set non-finite values to 0
             
             #Add the profiles to the new healpix map
             new_map[pixind] += Paint         

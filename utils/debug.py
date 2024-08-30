@@ -1,11 +1,50 @@
 import functools
 import time
 
+__all__ = ['log_time']
+
 def log_time(func):
-    '''
-    Simple function that allows logging amount of time spent 
-    running code between line A and line B
-    '''
+    """
+    A decorator to log the amount of time spent running code between specific lines.
+
+    The `log_time` decorator wraps a function to provide a mechanism for logging the cumulative time
+    spent executing specific lines of code. It can be used for performance profiling by recording how
+    much time is spent between checkpoints within the function. This is done by passing a custom 
+    `log_line_time` function into the wrapped function's keyword arguments, which can be called to 
+    log time at specific lines.
+
+    Parameters
+    ----------
+    func : callable
+        The function to be wrapped and timed.
+
+    Returns
+    -------
+    callable
+        The wrapped function with timing capabilities.
+
+    Examples
+    --------
+    To use the `log_time` decorator, simply apply it to a function. Within the function, use the 
+    `log_line_time` keyword argument to log time at specific lines.
+
+    >>> @log_time
+    >>> def example_function(log_line_time=None):
+    >>>     # Some code
+    >>>     log_line_time(10)  # Log time at line 10
+    >>>     # More code
+    >>>     log_line_time(20)  # Log time at line 20
+    >>> 
+    >>> example_function()
+
+    This will print the cumulative time spent between the logged lines when the function is called.
+
+    Notes
+    -----
+    - The `log_line_time` function is injected into the wrapped function's keyword arguments.
+    - It uses a nonlocal variable to track time across function calls.
+    - The cumulative time spent at each line is printed out after the wrapped function completes.
+    """
     
     @functools.wraps(func)
     def wrapper(*args, **kwargs):

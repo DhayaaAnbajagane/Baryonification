@@ -24,31 +24,73 @@ Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 #computatational cosntant
 Pressure_at_infinity = 0
 
+__all__ = ['BattagliaPressure', 'BattagliaElectronPressure', 'BattagliaGasDensity']
+
+
 class BattagliaPressure(ccl.halos.profiles.HaloProfile):
+    """
+    Class for implementing the Battaglia pressure profile using CCL's halo profile framework.
 
-    '''
-    Class that implements a Battaglia profile using the
-    CCL profile class. This class inheritance allows us to
-    easily compute relevant observables using the CCL
-    machinery.
+    This class computes the pressure profile of halos using the `Battaglia et al. (2012) <https://arxiv.org/pdf/1109.3711>`_ model. 
+    The model is based on numerical simulations and provides a way to calculate the electron 
+    pressure profile in galaxy clusters, which is useful for studying the thermal Sunyaev-Zel'dovich 
+    effect and other astrophysical phenomena.
 
-    ------------------
-    Params:
-    ------------------
+    Inherits from
+    -------------
+    ccl.halos.profiles.HaloProfile : Base class for halo profiles in CCL.
 
+    Parameters
+    ----------
     Model_def : str
-        The available mode calibrations from Battaglia+ 2012.
-        Can be one of '200_AGN', '500_AGN', and '500_SH'. The former
-        two were calibrated using simulations w/ AGN feedback, whereas
-        the latter did not. The initial three-digit number denoted the
-        spherical overdensity definition used in the calibration (Either
-        M200c or M500c).
+        Specifies the model calibration to use from Battaglia et al. (2012). Options are:
+        - '200_AGN': Calibrated using AGN feedback and a 200c overdensity mass definition.
+        - '500_AGN': Calibrated using AGN feedback and a 500c overdensity mass definition.
+        - '500_SH': Calibrated without AGN feedback and a 500c overdensity mass definition.
+    truncate : float, optional
+        Radius (in units of \( R / R_{\text{def}} \), where \( R_{\text{def}} \) is the halo 
+        radius defined via the chosen spherical overdensity) at which to truncate the profiles 
+        and set them to zero. Default is `False`, meaning no truncation is applied.
 
-    truncate : float
-        The radius (in units of R/Rdef, where Rdef is the halo radius defined
-        via some chosen spherical overdensity definition) at which to cutoff
-        the profiles and set them to zero. Default is False.
-     '''
+    Notes
+    -----
+    - The Battaglia pressure profile is parameterized based on simulations and provides 
+    different calibrations depending on the inclusion of AGN feedback and the mass 
+    definition used (200c or 500c overdensities). This class supports switching 
+    between these calibrations using the `Model_def` parameter.
+
+    - The profile has limits for validity, including redshift, halo mass, and distance 
+    from the halo center. The `truncate` parameter can be used to enforce a distance 
+    cutoff, setting the profile to zero beyond the specified radius.
+
+    - The pressure profile is computed using the following parameters from Battaglia et al. (2012):
+
+    .. math::
+
+        P(r) = P_\\delta \\cdot P_0 \\cdot \\left( \\frac{x}{x_c} \\right)^\\gamma \\cdot 
+        \\left( 1 + \\left( \\frac{x}{x_c} \\right)^\\alpha \\right)^{-\\beta}
+
+    where:
+        - \( x = \\frac{r}{R} \) is the radial distance normalized by the halo radius.
+        - \( P_\\delta \) is the self-similar expectation for pressure.
+        - \( P_0, x_c, \\beta \) are model parameters depending on the chosen `Model_def`.
+        - \( \\alpha, \\gamma \) are set to 1 and -0.3, respectively.
+
+    - Cosmological and halo parameters such as \( \\Omega_m \), \( \\Omega_b \), \( \\Omega_g \), 
+    and \( h \) are obtained from the `cosmo` object.
+    - If the `truncate` parameter is set, the profile is truncated to zero beyond the specified radius.
+    - Units are converted to CGS for the final profile values.
+
+    Examples
+    --------
+    Compute the Battaglia pressure profile for a given cosmology and halo:
+
+    >>> battaglia_model = BattagliaPressure(Model_def='200_AGN', truncate=1.5)
+    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+    >>> M = 1e14  # Halo mass in solar masses
+    >>> a = 0.5  # Scale factor corresponding to redshift z
+    >>> pressure_profile = battaglia_model._real(my_cosmology, r, M, a)
+    """
 
     def __init__(self, Model_def, truncate = False):
 
@@ -81,45 +123,6 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         self.precision_fftlog['padding_hi_fftlog'] = 1e4
 
     def _real(self, cosmo, r, M, a, mass_def=None):
-
-        '''
-        Function that computes the Battaglia pressure profile for halos.
-        Can use three different definitions: 200_AGN, 500_AGN, and 500_SH.
-
-        Based on arxiv:1109.3711
-
-        ------------------
-        Params:
-        ------------------
-
-        cosmo : pyccl.Cosmology object
-            A CCL cosmology object that contains the relevant
-            cosmological parameters
-
-        r : float, numpy array, list
-            Radii (in comoving Mpc) to evaluate the profiles at.
-
-        M : float, numpy array, list
-            The list of halo masses (in Msun) to compute the profiles
-            around.
-
-        a : float
-            The cosmic scale factor
-
-        mass_def : ccl.halos.massdef.MassDef object
-            The mass definition associated with the input, M
-
-
-        ------------------
-        Output:
-        ------------------
-
-        numpy array :
-            An array of size (M.size, R.size) that contains the electron
-            pressure values at radius R of each cluster of a mass given
-            by array M. If M.size and/or R.size are simply 1, then the output
-            is flattened along that dimension.
-        '''
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
@@ -187,6 +190,32 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
     
     
 class BattagliaElectronPressure(BattagliaPressure):
+    """
+    Computes the electron pressure profile based on the Battaglia et al. (2012) model.
+
+    This class extends `BattagliaPressure` by scaling the gas pressure profile 
+    to electron pressure using a predefined conversion factor.
+
+    Inherits from
+    -------------
+    BattagliaPressure : Base class for computing thermal pressure profiles.
+
+    Notes
+    -----
+    The electron pressure is calculated as a scaled version of the thermal pressure 
+    using:
+
+    .. math::
+
+        P_{\\text{e}}(r) = P_{\\text{gas-to-e}} \\times P_{\\text{gas}}(r)
+
+    where \( P_{\\text{gas-to-e}} \) is a constant conversion factor.
+
+    Methods
+    -------
+    _real(cosmo, r, M, a, mass_def)
+        Computes the electron pressure profile using the scaled gas pressure.
+    """
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
@@ -196,30 +225,31 @@ class BattagliaElectronPressure(BattagliaPressure):
     
     
 class BattagliaGasDensity(ccl.halos.profiles.HaloProfile):
+    """
+    Computes the gas density profile based on the Battaglia et al. (2012) model.
 
-    '''
-    Class that implements a Battaglia profile using the
-    CCL profile class. This class inheritance allows us to
-    easily compute relevant observables using the CCL
-    machinery.
+    This class implements the gas density profile using the Battaglia model, 
+    allowing for different calibrations and optional truncation at specified radii.
+    The mass-definition is forced to be 200c.
 
-    ------------------
-    Params:
-    ------------------
+    Inherits from
+    -------------
+    ccl.halos.profiles.HaloProfile : Base class for halo profiles in CCL.
 
+    Parameters
+    ----------
     Model_def : str
-        The available mode calibrations from Battaglia+ 2012.
-        Can be one of '200_AGN', '500_AGN', and '500_SH'. The former
-        two were calibrated using simulations w/ AGN feedback, whereas
-        the latter did not. The initial three-digit number denoted the
-        spherical overdensity definition used in the calibration (Either
-        M200c or M500c).
+        Specifies the calibration model to use ('200_AGN', '200_SH'). These options 
+        determine the parameters based on different feedback scenarios and mass definitions.
+    truncate : float, optional
+        Radius (in units of \( R / R_{\\text{def}} \)) at which to truncate the profile. 
+        Default is `False`, meaning no truncation is applied.
 
-    truncate : float
-        The radius (in units of R/Rdef, where Rdef is the halo radius defined
-        via some chosen spherical overdensity definition) at which to cutoff
-        the profiles and set them to zero. Default is False.
-     '''
+    Notes
+    -----
+    The gas density profile is calibrated using simulations with and without AGN feedback, 
+    depending on the selected `Model_def`.
+    """
 
     def __init__(self, Model_def, truncate = False):
 
@@ -241,45 +271,6 @@ class BattagliaGasDensity(ccl.halos.profiles.HaloProfile):
 
 
     def _real(self, cosmo, r, M, a, mass_def=None):
-
-        '''
-        Function that computes the Battaglia pressure profile for halos.
-        Can use three different definitions: 200_AGN, 500_AGN, and 500_SH.
-
-        Based on arxiv:1109.3711
-
-        ------------------
-        Params:
-        ------------------
-
-        cosmo : pyccl.Cosmology object
-            A CCL cosmology object that contains the relevant
-            cosmological parameters
-
-        r : float, numpy array, list
-            Radii (in comoving Mpc) to evaluate the profiles at.
-
-        M : float, numpy array, list
-            The list of halo masses (in Msun) to compute the profiles
-            around.
-
-        a : float
-            The cosmic scale factor
-
-        mass_def : ccl.halos.massdef.MassDef object
-            The mass definition associated with the input, M
-
-
-        ------------------
-        Output:
-        ------------------
-
-        numpy array :
-            An array of size (M.size, R.size) that contains the electron
-            pressure values at radius R of each cluster of a mass given
-            by array M. If M.size and/or R.size are simply 1, then the output
-            is flattened along that dimension.
-        '''
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)

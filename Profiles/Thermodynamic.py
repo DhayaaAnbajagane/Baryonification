@@ -33,16 +33,77 @@ Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 
 #Technically P(r -> infty) is zero, but we  may need finite
 #value for numerical reasons (interpolator). This is a
-#computatational constant
+#computatational constant. We actually set it to zero though.
 Pressure_at_infinity = 0
+
+
+__all__ = ['Pressure', 'NonThermalFrac', 'NonThermalFracGreen20',
+           'Temperature', 'ThermalSZ']
+
 
 class Pressure(SchneiderProfiles):
     """
-    Computes the pressure of the GAS.
-    Need to use additional factors to get the electron pressure.
+    Class for computing the gas pressure profile in halos.
+
+    This class extends `SchneiderProfiles` to compute the gas pressure profile within halos 
+    under the assumption of hydrostatic equilibrium. The gas pressure is derived using a 
+    total mass profile and a gas density profile. We define a pressure gradient from the
+    assumption of hydrostatic equilibrium, and integrate to obtain the pressure.
+
+    This gives only the *total gas pressure*. If you want the electron pressure
+    see `ElectronPressure`, and if you want to only the thermal/non-thermal
+    pressure see `NonThermalFrac`.
+
+    Inherits from
+    -------------
+    SchneiderProfiles : Base class for halo profiles.
+
+    Parameters
+    ----------
+    gas : Gas, optional
+        An instance of the `Gas` class defining the gas density profile. If not provided, 
+        a default `Gas` object is created using `kwargs`.
+    darkmatterbaryon : DarkMatterBaryon, optional
+        An instance of the `DarkMatterBaryon` class defining the combined dark matter 
+        and baryonic mass profile. If not provided, a default `DarkMatterBaryon` object 
+        is created using `kwargs`.
+    nonthermal_model : object, optional
+        An instance defining a model for non-thermal pressure contributions. Default is None.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Gas`, `DarkMatterBaryon`, 
+        and other parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    - This class calculates the pressure assuming hydrostatic equilibrium, which gives:
+
+      .. math::
+
+          \\frac{dP}{dr} = -\\frac{GM(<r)\\rho_{\\text{gas}}(r)}{r^2}
+
+      where:
+        - \( G \) is the gravitational constant.
+        - \( M(<r) \) is the cumulative mass within radius \( r \).
+        - \( \\rho_{\\text{gas}}(r) \) is the gas density profile.
+
+    - The gas pressure \( P(r) \) is then obtained by integrating \( dP/dr \):
+
+      .. math::
+
+          P(r) = \\int_r^{\\infty} -\\frac{GM(<r')\\rho_{\\text{gas}}(r')}{r'^2} r' d\\ln r'
+
+    - The integration is performed numerically, and the result is converted to CGS units 
+      for practical applications.
+    - An exponential cutoff is applied to the profile to prevent numerical overflow at large radii.
+
+    Methods
+    -------
+    _real(cosmo, r, M, a, mass_def)
+        Computes the gas pressure profile based on the given cosmology, radii, mass, 
+        scale factor, and mass definition.
     """
     
-    def __init__(self, gas = None, darkmatterbaryon = None, nonthermal_model = None, **kwargs):
+    def __init__(self, gas = None, darkmatterbaryon = None, **kwargs):
         
         self.Gas = gas
         self.DarkMatterBaryon = darkmatterbaryon
@@ -57,17 +118,75 @@ class Pressure(SchneiderProfiles):
         self.Gas.set_parameter('cutoff', 1000)
         self.DarkMatterBaryon.set_parameter('cutoff', 1000)
             
-        self.nonthermal_model = nonthermal_model
         super().__init__(**kwargs)
         
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
+        """
+        Computes the gas pressure profile using hydrostatic equilibrium.
+
+        This method calculates the gas pressure profile for a specified cosmology, radii, 
+        halo mass, and scale factor. The pressure is computed by integrating the pressure 
+        gradient derived from the hydrostatic equilibrium condition.
+
+        Parameters
+        ----------
+        cosmo : object
+            A CCL cosmology instance containing the cosmological parameters used for calculations.
+        r : array_like
+            Radii at which to evaluate the pressure profile, in comoving Mpc.
+        M : float or array_like
+            Halo mass or array of halo masses, in solar masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        mass_def : object, optional
+            Mass definition object from CCL, specifying the overdensity criterion. Default is `MassDef(200, 'critical')`.
+
+        Returns
+        -------
+        prof : ndarray
+            Pressure profile corresponding to the input radii and halo mass, in CGS units.
+
+        Notes
+        -----
+        - The pressure gradient is calculated using the formula:
+
+        .. math::
+
+            \\frac{dP}{dr} = -\\frac{GM(<r)\\rho_{\\text{gas}}(r)}{r^2}
+
+        where:
+            - \( G \) is the gravitational constant.
+            - \( M(<r) \) is the cumulative mass within radius \( r \), calculated from the 
+            total density profile.
+            - \( \\rho_{\\text{gas}}(r) \) is the gas density profile.
+
+        - The pressure profile \( P(r) \) is obtained by numerically integrating the pressure gradient:
+
+        .. math::
+
+            P(r) = \\int_r^{\\infty} -\\frac{GM(<r')\\rho_{\\text{gas}}(r')}{r'^2} r' d\\ln r'
+
+        - The integration is performed from large radii towards smaller radii to satisfy the boundary 
+        condition \( P(r \\to \\infty) = 0 \). 
+        - The profile is converted to CGS units using appropriate conversion factors.
+
+        Examples
+        --------
+        Compute the gas pressure profile for a given cosmology and halo:
+
+        >>> pressure_model = Pressure(gas=gas_profile, darkmatterbaryon=dmb_profile, cosmo=my_cosmology)
+        >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+        >>> M = 1e14  # Halo mass in solar masses
+        >>> a = 0.5  # Scale factor corresponding to redshift z
+        >>> pressure_profile = pressure_model._real(my_cosmology, r, M, a)
+        """
+            
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
         z = 1/a - 1
-
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         r_integral = np.geomspace(1e-6, 1000, 500) #Hardcoded ranges
@@ -94,7 +213,7 @@ class Pressure(SchneiderProfiles):
         prof  = np.exp(prof(np.log(r_use))) - Pressure_at_infinity
         prof  = np.where(np.isfinite(prof), prof, 0) #Get rid of pesky NaN and inf values if they exist! They break CCL spline interpolator
         
-        #Convert to CGS. Using only one factor of Mpc_to_m is correct
+        #Convert to CGS. Using only one factor of Mpc_to_m is correct here!
         prof  = prof * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2)
         
         #Now do cutoff
@@ -116,6 +235,60 @@ class Pressure(SchneiderProfiles):
 
 class NonThermalFrac(SchneiderProfiles):
     
+    """
+    Class for computing the non-thermal pressure fraction profile in halos.
+
+    This class extends `SchneiderProfiles` to compute the fraction of pressure that is 
+    non-thermal within halos. The non-thermal fraction is modelled in a redshift, and radius
+    dependent manner, following Equations 15/16 in `Pandey et. al 2025 <https://arxiv.org/pdf/2401.18072>`_. 
+    This can model be applied to any profiles using simple multiplication of the initialized classes,
+
+    `ThermalPressure = Pressure(**kwargs) * (1 - NonThermalFrac(**kwargs))`
+
+    The `real()` method of `ThermalPressure` will then account for non-thermal pressure
+    effects as well.
+
+    Inherits from
+    -------------
+    SchneiderProfiles : Base class for halo profiles.
+
+    Parameters
+    ----------
+    alpha_nt : float
+        Normalization factor for the non-thermal pressure fraction.
+    nu_nt : float
+        Parameter controlling the redshift dependence of the non-thermal fraction.
+    gamma_nt : float
+        Parameter controlling the radial dependence of the non-thermal fraction.
+    **kwargs
+        Additional keyword arguments passed to initialize other parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `NonThermalFrac` class is used to compute the non-thermal pressure fraction, 
+    which represents the fraction of total pressure that is non-thermal (e.g., due to 
+    turbulence or magnetic fields) as a function of radius and redshift. This fraction 
+    is used to modify the total pressure profile, accounting for contributions that are 
+    not purely thermal.
+
+    The non-thermal pressure fraction \( f_{\\text{nt}}(r, z) \) is calculated using:
+
+    .. math::
+
+        f_{\\text{nt}}(r, z) = \\alpha_{\\text{nt}} \\times f_z \\times \\left( \\frac{r}{R} \\right)^{\\gamma_{\\text{nt}}}
+
+    where:
+        - \( \\alpha_{\\text{nt}} \) is the normalization factor.
+        - \( f_z \) is the redshift-dependent factor, defined as:
+
+          .. math::
+
+              f_z = \\min\\left[(1 + z)^{\\nu_{\\text{nt}}}, \\left(f_{\\text{max}} - 1\\right) \\tanh\\left(\\nu_{\\text{nt}} z\\right) + 1\\right]
+
+        - \( R \) is the halo radius based on the mass definition.
+        - \( \\gamma_{\\text{nt}} \) controls the radial dependence.
+    """
+
     def __init__(self, **kwargs):
         
         self.alpha_nt = kwargs['alpha_nt']
@@ -153,6 +326,31 @@ class NonThermalFrac(SchneiderProfiles):
 
 class NonThermalFracGreen20(SchneiderProfiles):
     
+    """
+    Class for computing the non-thermal pressure fraction profile using the Green et al. (2020) model.
+
+    
+    Notes
+    -----
+    The model is based on parameters calibrated to simulations and is specifically defined 
+    with respect to \( R_{200m} \), the radius within which the mean density is 200 times 
+    the mean matter density of the universe.
+
+    The non-thermal pressure fraction \( f_{\\text{nt}}(r) \) is calculated using:
+
+    .. math::
+
+        f_{\\text{nt}}(r) = 1 - a \\left(1 + \\exp\\left(-\\left(\\frac{x}{b}\\right)^c\\right)\\right) 
+                            \\left(\\frac{\\nu_M}{4.1}\\right)^{\\frac{d}{1 + \\left(\\frac{x}{e}\\right)^f}}
+
+    where:
+        - \( x = \\frac{r}{R_{200m}} \)
+        - \( \\nu_M = \\frac{1.686}{\\sigma(M_{200m})} \) is the peak height parameter.
+        - \( a, b, c, d, e, f \) are model parameters calibrated to fit simulation data.
+
+    There are no free parameters in this model; it is completely specified by the halo mass and redshift.
+    """
+
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
         
@@ -187,7 +385,27 @@ class NonThermalFracGreen20(SchneiderProfiles):
     
 
 class ElectronPressure(Pressure):
-    
+    """
+    Class for computing the electron pressure profile in halos.
+
+    This class extends the `Pressure` class to compute the electron pressure 
+    profile from the total gas pressure. The conversion factor is 
+    \( P_{\\text{e}} = P_{\\text{th}} \\times P_{\\text{th-to-Pe}} \), where 
+    \( P_{\\text{th-to-Pe}} = (4 - 2Y)/(8 - 5Y), with Y = 0.24\).
+
+
+    Inherits from
+    -------------
+    Pressure : Base class for computing gas pressure profiles in halos.
+
+    Notes
+    -----
+    The `ElectronPressure` class is used to compute the electron pressure profile 
+    within halos, which is relevant for understanding the thermal Sunyaev-Zel'dovich 
+    (tSZ) effect. The conversion is done assuming pressure equilibrium between electrons
+    and protons in a system dominated by hydrogen and helium species (hence the use of Y).
+
+    """
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
         prof = Pth_to_Pe * super()._real(cosmo, r, M, a, mass_def)
@@ -195,8 +413,49 @@ class ElectronPressure(Pressure):
         return prof
 
 
-    
 class GasNumberDensity(SchneiderProfiles):
+    """
+    Class for computing the gas number density profile in halos.
+
+    This class extends `SchneiderProfiles` to compute the gas number density profile 
+    within halos. The number density is derived from the gas density profile by dividing 
+    by the mean molecular weight and the mass of the proton, and then converting to 
+    proper CGS units.
+
+    Inherits from
+    -------------
+    SchneiderProfiles : Base class for halo profiles.
+
+    Parameters
+    ----------
+    gas : Gas, optional
+        An instance of the `Gas` class defining the gas density profile. If not provided, 
+        a default `Gas` object is created using `kwargs`.
+    mean_molecular_weight : float, optional
+        Mean molecular weight of the gas. Default is 1.15, which is typical for ionized 
+        hydrogen with a small fraction of helium.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Gas` profile and other 
+        parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `GasNumberDensity` class is used to compute the number density of gas particles 
+    in halos, which is relevant for understanding the baryonic content of halos and for 
+    modeling various astrophysical processes, such as cooling and star formation.
+
+    The gas number density \( n_{\\text{gas}} \) is calculated by dividing the gas density 
+    profile \( \\rho_{\\text{gas}} \) by the mean molecular weight and the mass of the proton:
+
+    .. math::
+
+        n_{\\text{gas}}(r) = \\frac{\\rho_{\\text{gas}}(r)}{\\mu \\cdot m_p}
+
+    where:
+        - \( \\mu \) is the mean molecular weight of the gas.
+        - \( m_p \) is the mass of the proton.
+        - The result is converted to the proper units (number per cubic centimeter).
+    """
     
     def __init__(self, gas = None, mean_molecular_weight = 1.15, **kwargs):
         
@@ -217,7 +476,7 @@ class GasNumberDensity(SchneiderProfiles):
 
         R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        rho  = self.Gas = Gas(**self.model_params)
+        rho  = self.Gas
         rho  = rho.real(cosmo, r_use, M, a, mass_def = mass_def)
         prof = rho / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
         
@@ -231,6 +490,48 @@ class GasNumberDensity(SchneiderProfiles):
     
     
 class Temperature(SchneiderProfiles):
+    """
+    Class for computing the temperature profile in halos.
+
+    The temperature is derived from the thermal pressure and the number density profiles, 
+    of a species using the ideal gas law. The temperature profile is important for understanding 
+    the thermal state of the intracluster medium and its impact on various astrophysical processes.
+
+    For this model to be correct, the input pressure must be the *thermal pressure*, i.e. the
+    non-thermal pressure must have already been accounted for in the model passed to this class.
+
+
+    Parameters
+    ----------
+    pressure : Pressure, optional
+        An instance of the `Pressure` class defining the thermal gas pressure profile. 
+        If non-thermal pressure is relevant for your problem, it must be included in this
+        profile; see `Pressure` or `NonThermalFrac` for more details.
+        If this parameter is not provided, a default `Pressure` object is created using `kwargs`.
+    gasnumberdensity : GasNumberDensity, optional
+        An instance of the `GasNumberDensity` class defining the gas number density profile. 
+        If not provided, a default `GasNumberDensity` object is created using `kwargs`.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Pressure`, `GasNumberDensity`, 
+        and other parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `Temperature` class computes the temperature profile of the gas in halos by dividing 
+    the gas pressure by the gas number density and the Boltzmann constant. This calculation 
+    assumes the ideal gas law, which relates pressure, number density, and temperature.
+
+    The gas temperature \( T \) is calculated using:
+
+    .. math::
+
+        T(r) = \\frac{P}(r)}{n(r) \\cdot k_B}
+
+    where:
+        - \( P(r) \) is the pressure profile of a species.
+        - \( n(r) \) is the number density profile of a species.
+        - \( k_B \) is the Boltzmann constant (in eV).
+    """
     
     def __init__(self, pressure = None, gasnumberdensity = None, **kwargs):
         
@@ -244,7 +545,6 @@ class Temperature(SchneiderProfiles):
         
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        
         
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
@@ -271,23 +571,81 @@ class Temperature(SchneiderProfiles):
     
 
 class ThermalSZ(SchneiderProfiles):
+    """
+    Class for computing the thermal Sunyaev-Zel'dovich (tSZ) effect profile in halos.
+
+    This class extends `SchneiderProfiles` to compute the tSZ effect, which is caused 
+    by the inverse Compton scattering of cosmic microwave background (CMB) photons 
+    off hot electrons in the intracluster medium of galaxy clusters. The tSZ effect 
+    is represented by the Compton-y parameter, which is proportional to the line-of-sight 
+    integral of the electron pressure.
+
+    In practice, this scale uses the `projected` method of the input `pressure` object.
+    It accounts for the right units, to provide a dimensionless compton-y parameter.
+
+    Inherits from
+    -------------
+    SchneiderProfiles : Base class for halo profiles.
+
+    Parameters
+    ----------
+    pressure : Pressure, optional
+        An instance of the `Pressure` class defining the thermal gas pressure profile. 
+        If not provided, a default `Pressure` object is created using `kwargs`.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Pressure` profile and other 
+        parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `ThermalSZ` class computes the tSZ effect by calculating the projected electron 
+    pressure profile along the line of sight. 
+
+    - The tSZ effect is computed by projecting the electron pressure along the line of sight:
+
+    .. math::
+
+        y(r) = \\frac{\\sigma_T}{m_e c^2} \\int P_{\\text{e}}(r') \\, dr'
+
+    where \( P_{\\text{e}}(r') \) is the electron pressure profile.
+    
+    Methods
+    -------
+    Pgas_to_Pe(cosmo, r, M, a, mass_def)
+        Returns the conversion factor from gas pressure to electron pressure.
+    
+    projected(cosmo, r, M, a, mass_def)
+        Computes the projected tSZ profile (Compton-y parameter) based on the given 
+        cosmology, radii, mass, scale factor, and mass definition.
+    
+    real(cosmo, r, M, a, mass_def)
+        This is not to be used, as SZ is a projected quantity. However, the method
+        still returns a sentinel value of -99, needed for consistency in other parts
+         of the pipeline (eg. Tabulation, see `TabulatedProfile`).
+    """
     
     
-    def __init__(self, Pressure = None, **kwargs):
+    def __init__(self, pressure = None, **kwargs):
         
-        self.Pressure = Pressure
-        if self.Pressure is None: self.Pressure = Pressure(**kwargs)
+        self.pressure = Pressure
+        if self.pressure is None: self.pressure = Pressure(**kwargs)
 
         super().__init__(**kwargs)
         
     
     def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
         
+        """
+        Returns the precomputed conversion factor from gas pressure to electron pressure.
+        Can be redefined by user if they wish to use a different (mass-dependent) value
+        for this quantity.
+        """
+            
         return Pth_to_Pe
     
     
     def projected(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):        
-        
+
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
@@ -295,7 +653,7 @@ class ThermalSZ(SchneiderProfiles):
         R     = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         #Now a series of units changes to the projected profile.
-        prof  = self.Pressure.projected(cosmo, r_use, M_use, a, mass_def) #generate profile
+        prof  = self.pressure.projected(cosmo, r_use, M_use, a, mass_def) #generate profile
         prof  = prof * a * (Mpc_to_m * 1e2) #Line-of-sight integral is done in comoving Mpc, we want physical cm
         prof  = prof * sigma_T_cgs/(m_e_cgs*c_cgs**2) #Convert to SZ (dimensionless units)
         prof  = prof * self.Pgas_to_Pe(cosmo, r_use, M_use, a, mass_def) #Then convert from gas pressure to electron pressure
@@ -321,8 +679,11 @@ class ThermalSZ(SchneiderProfiles):
 class XrayLuminosity(ccl.halos.profiles.HaloProfile):
     
     
-    def __init__(self, temperature = None, gasnumberdensity = None):
-        
+    def __init__(self, temperature = None, gasnumberdensity = None, **kwargs):
+
+        raise NotImplementedError("Dhayaa: I have not yet worked on this profile properly. "
+                                  "So don't use this yet! It's missing cooling factor calibrations.")
+
         self.Temperature      = temperature
         self.GasNumberDensity = gasnumberdensity
         

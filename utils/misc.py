@@ -2,15 +2,47 @@ import numpy as np
 import pyccl as ccl
 from operator import add, mul, sub, truediv, pow, abs, neg, pos
 
+__all__ = ['generate_operator_method']
 
 def generate_operator_method(op, reflect = False):
-    '''
-    Define a method for generating the simple arithmetic
-    operations for the Profile classes. This changes the _real()
-    routine in the ``HaloProfile'' classes such that the new result
-    is the same as generating the _real() of the individual classes
-    and then performing the arithmetic operation on them.
-    '''
+    """
+    Defines a method for generating simple arithmetic operations for the Profile classes.
+
+    The `generate_operator_method` function dynamically creates methods that can be used to perform
+    arithmetic operations (such as addition, subtraction, multiplication, etc.) on instances of the
+    `HaloProfile` classes or similar. This function alters the `_real()` routine in the `HaloProfile`
+    classes so that the new result is equivalent to computing the `_real()` of the individual classes
+    and then performing the specified arithmetic operation.
+
+    Parameters
+    ----------
+    op : function
+        The arithmetic operation to be applied. It should be one of the Python arithmetic operators like
+        `add`, `mul`, `sub`, `pow`, `truediv`, `abs`, `neg`, or `pos` from the `operator` module.
+    
+    reflect : bool, optional
+        If `True`, the order of the operands is reversed (i.e., the operation is performed with the
+        second operand as the first). Used to handle right-handed/left-handed operations. Default is `False`.
+
+    Returns
+    -------
+    operator_method : function
+        A function that defines how the arithmetic operation should be performed on the `HaloProfile`
+        classes. This function can handle operations with other `HaloProfile` instances, integers, or
+        floats.
+
+    Examples
+    --------
+    To use `generate_operator_method` for addition, you might do:
+
+    >>> from operator import add
+    >>> add_method = generate_operator_method(add)
+    >>> profile_sum = add_method(profile1, profile2)
+    
+    Notes
+    -----
+    - The method returned can handle both unary and binary operations depending on the operator specified.
+    """
 
     if op in [add, mul, sub, pow, truediv]:
         def operator_method(self, other):

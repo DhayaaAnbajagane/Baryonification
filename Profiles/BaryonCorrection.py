@@ -8,11 +8,84 @@ from itertools import product
 
 from ..utils.Tabulate import _set_parameter
 
+__all__ = ['BaryonificationClass', 'Baryonification3D', 'Baryonification2D']
 
 class BaryonificationClass(object):
+    """
+    Base class for implementing displacement function models.
+
+    It takes in various input profiles and cosmological parameters to calculate the 
+    displacement of particles/cells that is needed to convertfrom one matter distribution to another. 
+    The class provides methods to set up interpolation tables for quick calculations of mass displacements.
+
+    Parameters
+    ----------
+    DMO : object
+        An instance of a dark matter-only profile, see `DarkMatterOnly`.
+    DMB : object
+        An instance of a dark matter-baryon profile, see `DarkMatterBaryon`.
+    cosmo : object
+        A CCL cosmology instance containing the cosmological parameters used for calculations.
+    epsilon_max : float, optional
+        The maximum displacement factor for the mass profile, in units of halo radius. Default is 20.
+    mass_def : object, optional
+        Mass definition object from CCL, default is `MassDef(200, 'critical')`.
+
+    Notes
+    -----
+    The `BaryonificationClass` generates a displacement function that specifies 
+    how baryonic processes alter the distribution of matter.
+
+    **Key Methods and Workflow:**
+
+    1. **`displacement()`**: Main method, which provides the computed displacements at a given radius
+       from a given halo, at a given scale factor. It checks if the interpolation table is set up and 
+       reads out the displacement using `_readout()`. It verifies that all required parameters are 
+       provided and calculates the displacement function based on the inputs.
+
+    2. **`setup_interpolator()`**: This method constructs interpolation tables for the displacement 
+       function over a range of redshifts, masses, and radii. It allows for efficient computation 
+       of mass displacements by precomputing and storing results. The method iterates over possible 
+       values of input parameters, checks for validity, and constructs interpolators using the 
+       `PchipInterpolator`.
+
+       .. math::
+
+           d(r, M, a) = f(\\log(1 + z), \\log(M), \\log(r), \\text{other parameters})
+
+       This function ensures that the computed profiles adhere to constraints such as monotonically 
+       increasing mass profiles and differences between DMO and DMB profiles asymptotically converging
+       to zero on large-enough scales.
+
+    3. **`get_masses()`**: This is an abstract method that must be implemented in subclasses. It is 
+       responsible for calculating the mass profiles given a model, radii, mass, scale factor, and 
+       mass definition. This method is expected to be overridden to provide specific mass calculations 
+       based on the profile models.
+
+    
+    4. **`_readout()`**: This helper method reads out the displacement from the precomputed 
+       interpolation table. It ensures that displacements are set to zero for radii beyond 
+       `epsilon_max` times the halo radius to avoid unphysical values.
+
+
+    **Normalization and Cutoff Handling:**
+
+    - The `cutoff` value for the DMO and DMB profiles (see `SchneiderProfiles`) is set to 1 Gpc by default, which assumes that the 
+      profiles are negligible beyond this scale. This helps to prevent numerical divergences during 
+      FFT calculations while ensuring asymptotic behavior at large scales.
+    - Only the real-space cutoff is modified here to prevent divergence; the projected cutoff remains as specified by the user. 
+
+    **Warnings:**
+
+    - The class issues warnings if the mass profiles are nearly constant over most of the radius range, 
+      which suggests potential numerical issues or negative densities. Users are advised to adjust FFT 
+      precision parameters such as `padding_lo_fftlog`, `padding_hi_fftlog`, or `n_per_decade` 
+      if such warnings occur.
+    """
+
 
     def __init__(self, DMO, DMB, cosmo, epsilon_max = 20, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-
+        
         self.DMO = DMO
         self.DMB = DMB
         
@@ -31,6 +104,31 @@ class BaryonificationClass(object):
 
 
     def get_masses(self, model, r, M, a, mass_def):
+        """
+        Abstract method for calculating mass profiles.
+
+        This method is intended to be overridden by subclasses to provide specific mass profile 
+        calculations. It should return the mass profile for a given model, radii, mass, scale factor, 
+        and mass definition.
+
+        Parameters
+        ----------
+        model : object
+            The model instance used to calculate the mass profile (e.g., DMO or DMB).
+        r : array_like
+            Radii at which to evaluate the mass profile, in comoving Mpc.
+        M : array_like
+            Halo mass or array of halo masses, in solar masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        mass_def : object
+            Mass definition object from CCL.
+
+        Raises
+        ------
+        NotImplementedError
+            This method must be implemented in subclasses of `BaryonificationClass`.
+        """
 
         raise NotImplementedError("Implement a get_masses() method first")
 
@@ -40,13 +138,59 @@ class BaryonificationClass(object):
                            M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, 
                            R_min = 1e-3, R_max = 1e2, N_samples_R = 100, 
                            other_params = {}, verbose = True):
+        
+        """
+        Sets up interpolation tables for the displacement function.
+
+        This method constructs interpolation tables over a range of redshifts, halo masses, 
+        and radii. It precomputes the displacement function values to facilitate efficient 
+        calculations of mass displacements due to baryonic processes. User can compute it
+        as a function of other inputs to `SchneiderProfiles` using the `other_params`
+        function argument.
+
+        Parameters
+        ----------
+        z_min : float, optional
+            Minimum redshift for the interpolation. Default is 1e-2.
+        z_max : float, optional
+            Maximum redshift for the interpolation. Default is 5.
+        N_samples_z : int, optional
+            Number of redshift samples during tabulation. Default is 30.
+        z_linear_sampling : bool, optional
+            If True, use linear sampling for redshift; otherwise, use logarithmic sampling. Default is False.
+            Useful if z_min = 0, as log spacing fails in that case.
+        M_min : float, optional
+            Minimum halo mass for the interpolation, in solar masses. Default is 1e12.
+        M_max : float, optional
+            Maximum halo mass for the interpolation, in solar masses. Default is 1e16.
+        N_samples_Mass : int, optional
+            Number of mass samples. Default is 30.
+        R_min : float, optional
+            Minimum radius for the interpolation, in comoving Mpc. Default is 1e-3.
+        R_max : float, optional
+            Maximum radius for the interpolation, in comoving Mpc. Default is 1e2.
+        N_samples_R : int, optional
+            Number of radius samples. Default is 100.
+        other_params : dict, optional
+            Additional parameters for model customization. To be provided in the format `{key : [list-like of vals]}`. 
+            The default is an empty dictionary.
+        verbose : bool, optional
+            If True, display progress information using `tqdm`. Default is True.
+
+
+        Notes
+        -----
+        - Ensures that mass profiles are monotonic and valid across the specified parameter ranges.
+        - Issues warnings if profiles are nearly constant over radius or if the interpolation 
+        fails for specific halo masses. Warnings tend to be raised for the lowest masses,
+        especially when using pixel window convolutions.
+        """
 
         M_range  = np.geomspace(M_min, M_max, N_samples_Mass)
         r        = np.geomspace(R_min, R_max, N_samples_R)
         z_range  = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
         p_keys   = list(other_params.keys()); setattr(self, 'p_keys', p_keys)
         d_interp = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys])
-        dlnr     = np.log(r[1]) - np.log(r[0])
         
         #If other_params is empty then iterator will be empty and the code still works fine
         iterator = [p for p in product(*[np.arange(other_params[k].size) for k in p_keys])]
@@ -105,10 +249,7 @@ class BaryonificationClass(object):
                             
                             min_diff  = np.min([np.min(np.diff(ln_DMB[diff_mask], prepend = 0)[1:]),
                                                 np.min(np.diff(ln_DMO[diff_mask], prepend = 0)[1:])
-                                               ])
-                            
-                            
-                                                                
+                                               ])                                                          
                             
                         #If we have enough usable mass values, then proceed as usual
                         #This generally breaks for very small halos, where projection
@@ -147,10 +288,38 @@ class BaryonificationClass(object):
             
         self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.NaN)        
 
-        return 0
-
     
     def _readout(self, r, M, a, **kwargs):
+
+        """
+        Read out the displacement from the interpolation table.
+
+        This method retrieves the displacement function values from the precomputed 
+        interpolation table for given radii, halo masses, and scale factor. It sets 
+        displacement values to zero beyond `r > R * epsilon_max`, where `R` is the
+        halo radius.
+
+        Parameters
+        ----------
+        r : array_like
+            Radii at which to evaluate the displacement, in comoving Mpc.
+        M : array_like
+            Halo mass or array of halo masses, in solar masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        **kwargs : dict
+            Additional parameters required by the interpolation table.
+
+        Returns
+        -------
+        displ : ndarray
+            Displacement values corresponding to the input radii and masses.
+
+        Notes
+        -----
+        - Ensures that displacements are set to zero for radii beyond `epsilon_max` 
+        times the halo radius to avoid unphysical values.
+        """
         
         table = self.interp_d #The interpolation table to use
         r_use = np.atleast_1d(r)
@@ -183,6 +352,36 @@ class BaryonificationClass(object):
 
     
     def displacement(self, r, M, a, **kwargs):
+        """
+        Return the displacement needed to convert the matter distribution
+        from the dmo profiles to the dmb profiles, for the given radii, halo 
+        masses, and scale factor. It never does a calculation on-the-fly and
+        instead reads out a precomputed table.
+
+        Parameters
+        ----------
+        r : array_like
+            Radii at which to evaluate the displacement, in comoving Mpc.
+        M : array_like
+            Halo mass or array of halo masses, in solar masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        **kwargs : dict
+            Additional parameters required by the interpolation table.
+
+        Returns
+        -------
+        displ : ndarray
+            Displacement values corresponding to the input radii and masses.
+            In comoving Mpc.
+
+        Raises
+        ------
+        NameError
+            If the interpolation table has not been set up using `setup_interpolator()`.
+        AssertionError
+            If required parameters are not provided in `kwargs`.
+        """
         
         if not hasattr(self, 'interp_d'):
             raise NameError("No Table created. Run setup_interpolator() method first")
@@ -195,8 +394,93 @@ class BaryonificationClass(object):
 
 
 class Baryonification3D(BaryonificationClass):
+    """
+    Class implementing a 3D baryonification model. It extends 
+    `BaryonificationClass` to provide the displacement function 
+    in three dimensions.
+
+    Inherits from
+    -------------
+    BaryonificationClass : Base class for baryonification models.
+
+    Notes
+    -----
+    The `Baryonification3D` class is used to compute the 3D enclosed mass profiles.
+    It integrates the density profile to obtain the cumulative 
+    enclosed mass as a function of radius:
+
+    .. math::
+
+        M_{\\text{enc}}(r) = 4\\pi \\int_0^r \\rho(r') r'^2 \\, d\\ln r'
+
+    the displacement function is then,
+
+    .. math::
+
+        \Delta d (r) = M_{\rm dmb}^{-1}(M_{\rm dmo}(r)) - r,
+
+    
+    Methods
+    -------
+    displacement(r, M, a, **kwargs)
+        Compute the displacement function for a given mass, radii, and scale factor
+    get_masses(model, r, M, a, mass_def)
+        Computes the enclosed mass profile for a given model, radii, halo mass, and scale factor.
+    """
 
     def get_masses(self, model, r, M, a, mass_def):
+        """
+        Computes the enclosed mass profile for a given model.
+
+        This method calculates the cumulative enclosed mass profile for a specified 
+        model (e.g., dark matter-only or dark matter-baryon), radii, halo mass, and 
+        scale factor.
+
+        Parameters
+        ----------
+        model : object
+            The model instance used to calculate the mass profile (e.g., DMO or DMB).
+        r : array_like
+            Radii at which to evaluate the mass profile, in comoving Mpc.
+        M : float or array_like
+            Halo mass or array of halo masses, in solar masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        mass_def : object
+            Mass definition object from CCL, specifying the overdensity criterion.
+
+        Returns
+        -------
+        M_f : ndarray
+            Enclosed mass profile corresponding to the input radii and halo mass. 
+            The output shape is (len(M), len(r)), unless M is a scalar, in which 
+            case the shape is (len(r),). Units of solar masses.
+
+        Notes
+        -----
+        - The method adjusts the integration range to ensure that the minimum and 
+        maximum radii do not disrupt the integral, adding a 20% buffer.
+        - Negative densities are set to zero to avoid unphysical results.
+        - The enclosed mass \( M_{\\text{enc}}(r) \) is calculated using:
+
+        .. math::
+
+            M_{\\text{enc}}(r) = 4\\pi \\int_0^r \\rho(r') r'^2 \\, d\\ln r'
+
+        - `PchipInterpolator` is used to interpolate the mass profile, ensuring smoothness 
+        and avoiding artifacts due to Fourier space ringing.
+        - If `M` is a scalar, the output is squeezed to remove extra dimensions.
+
+        Examples
+        --------
+        Compute the enclosed mass profile for a given model:
+
+        >>> baryon_model = Baryonification3D(DMO=dark_matter_profile, DMB=dmb_profile, cosmo=my_cosmology)
+        >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+        >>> M = 1e14  # Halo mass in solar masses
+        >>> a = 0.8  # Scale factor corresponding to redshift z
+        >>> mass_profile = baryon_model.get_masses(baryon_model.DMO, r, M, a, mass_def)
+        """
         
         #Make sure the min/max does not mess up the integral
         #Adding some 20% buffer just in case
@@ -229,7 +513,91 @@ class Baryonification3D(BaryonificationClass):
 
 class Baryonification2D(BaryonificationClass):
 
+    """
+    Class implementing a 2D baryonification model. It extends 
+    `BaryonificationClass` to provide the displacement function 
+    in two dimensions.
+
+    Inherits from
+    -------------
+    BaryonificationClass : Base class for baryonification models.
+
+    Notes
+    -----
+    The `Baryonification2D` class is used to compute the 2D mass profiles. 
+    It integrates the projected surface density profile, \( \Sigma(r) \), to obtain 
+    the cumulative enclosed mass as a function of radius. 
+
+    The enclosed mass \( M_{\\text{enc}}(r) \) is calculated by integrating the projected 
+    surface density profile \( \Sigma(r) \) over circular annuli:
+
+    .. math::
+
+        M_{\\text{enc}}(r) = 2\\pi \\int_0^r \Sigma(r') r' \, d\\ln r'
+
+    the displacement function is then
+
+    .. math::
+
+        \Delta d (r_{\\rm p}) = M_{\\rm DMB, p}^{-1}(M_{\\rm DMO, p}(r_{\\rm p})) - r_{\\rm p},
+
+    where :math:`r_{\\rm p}` is the projected radius.
+
+    """
+
     def get_masses(self, model, r, M, a, mass_def):
+        """
+        Computes the enclosed mass profile for a given model using 2D projection.
+
+        This method calculates the cumulative enclosed mass profile for a specified 
+        model (e.g., dark matter-only or dark matter-baryon), radii, halo mass, and 
+        scale factor.
+
+        Parameters
+        ----------
+        model : object
+            The model instance used to calculate the mass profile (e.g., DMO or DMB).
+        r : array_like
+            Radii at which to evaluate the mass profile, in comoving Mpc.
+        M : float or array_like
+            Halo mass or array of halo masses, in solar masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        mass_def : object
+            Mass definition object from CCL, specifying the overdensity criterion.
+
+        Returns
+        -------
+        M_f : ndarray
+            Enclosed mass profile corresponding to the input radii and halo mass. 
+            The output shape is (len(M), len(r)), unless M is a scalar, in which 
+            case the shape is (len(r),). In units of solar masses.
+
+        Notes
+        -----
+        - The method adjusts the integration range to ensure that the minimum and 
+        maximum radii do not disrupt the integral, adding a 20% buffer.
+        - Negative surface densities are set to zero to avoid unphysical results.
+        - The enclosed mass \( M_{\\text{enc}}(r) \) is calculated using:
+
+        .. math::
+
+            M_{\\text{enc}}(r) = 2\\pi \\int_0^r \\Sigma(r') r' \\, d\\ln r'
+
+        - `PchipInterpolator` is used to interpolate the mass profile, ensuring smoothness 
+        and avoiding artifacts due to Fourier space ringing.
+        - If `M` is a scalar, the output is squeezed to remove extra dimensions.
+
+        Examples
+        --------
+        Compute the enclosed mass profile for a given model using 2D projection:
+
+        >>> baryon_model = Baryonification2D(DMO=dark_matter_profile, DMB=dmb_profile, cosmo=my_cosmology)
+        >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+        >>> M = 1e14  # Halo mass in solar masses
+        >>> a = 0.5  # Scale factor corresponding to redshift z
+        >>> mass_profile = baryon_model.get_masses(baryon_model.DMO, r, M, a, mass_def)
+        """
         
         #Make sure the min/max does not mess up the integral
         #Adding some 20% buffer just in case

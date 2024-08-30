@@ -1,4 +1,3 @@
-
 import numpy as np
 import pyccl as ccl
 from operator import add, mul, sub, truediv, pow, neg, pos, abs
@@ -6,6 +5,10 @@ import warnings
 
 from scipy import interpolate
 from ..utils.Tabulate import _set_parameter
+
+__all__ = ['model_params', 'SchneiderProfiles', 
+           'DarkMatter', 'TwoHalo', 'Stars', 'Gas', 'ShockedGas', 'CollisionlessMatter',
+           'DarkMatterOnly', 'DarkMatterBaryon']
 
 
 model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
@@ -21,15 +24,57 @@ model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
                 'A', 'M1', 'eta', 'eta_delta', 'tau', 'tau_delta', 'epsilon_h', #Star params
                 
                 'alpha_nt', 'nu_nt', 'gamma_nt', 'mean_molecular_weight' #Non-thermal pressure and gas density
-               
                ]
 
 projection_params = ['padding_lo_proj', 'padding_hi_proj', 'n_per_decade_proj'] #Projection params
 
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
+    """
+    Base class for defining halo density profiles based on Schneider et al. models.
 
-    def __init__(self, xi_mm = None, use_fftlog_projection = False, 
-                 padding_lo_proj = 0.1, padding_hi_proj = 10, n_per_decade_proj = 10, **kwargs):
+    This class extends the `ccl.halos.profiles.HaloProfile` class and provides 
+    additional functionality for handling different halo density profiles. It allows 
+    for custom real-space projection methods, control over parameter initialization, 
+    and adjustments to the Fourier transform settings to minimize artifacts.
+
+    Parameters
+    ----------
+    use_fftlog_projection : bool, optional
+        If True, the default FFTLog projection method is used for the `projected` method. 
+        If False, a custom real-space projection is employed. Default is False.
+    padding_lo_proj : float, optional
+        The lower padding factor for the projection integral in real-space. Default is 0.1.
+    padding_hi_proj : float, optional
+        The upper padding factor for the projection integral in real-space. Default is 10.
+    n_per_decade_proj : int, optional
+        Number of integration points per decade in the real-space projection integral. Default is 10.
+    xi_mm : callable, optional
+        A function that returns the matter-matter correlation function at different radii.
+        Default is None, in which case we use the CCL inbuilt model.
+    **kwargs
+        Additional keyword arguments for setting specific parameters of the profile. If a parameter 
+        is not specified, defaults are assigned based on its type (e.g., mass/redshift/conc-dependence).
+
+    Attributes
+    ----------
+    model_params : dict
+        A dictionary containing all model parameters and their values.
+    precision_fftlog : dict
+        Dictionary with precision settings for the FFTLog convolution. Can be modified 
+        directly or using the update_precision_fftlog() method.
+
+    Methods
+    -------
+    real(cosmo, r, M, a, mass_def)
+        Computes the real-space density profile.
+    projected(cosmo, r, M, a, mass_def)
+        Computes the projected density profile.
+
+    """
+
+    def __init__(self, use_fftlog_projection = False, 
+                 padding_lo_proj = 0.1, padding_hi_proj = 10, n_per_decade_proj = 10, 
+                 xi_mm = None, **kwargs):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
@@ -85,6 +130,14 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     
     @property
     def model_params(self):
+        """
+        Returns a dictionary containing all model parameters and their current values.
+
+        Returns
+        -------
+        params : dict
+            Dictionary of model parameters.
+        """
         
         params = {k:v for k,v in vars(self).items() if k in model_params}
                   
@@ -93,6 +146,31 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         
     
     def _get_gas_params(self, M, z):
+        """
+        Computes gas-related parameters based on the mass and redshift.
+        Will use concentration is cdelta is specified during Class initialization.
+        Uses mass/redshift slopes provided during class initialization.
+
+        Parameters
+        ----------
+        M : array_like
+            Halo mass or array of halo masses.
+        z : float
+            Redshift.
+
+        Returns
+        -------
+        beta : ndarray
+            Small-scale gas slope.
+        theta_ej : ndarray
+            Ejection radius.
+        theta_co : ndarray
+            Core radius parameter.
+        delta : ndarray
+            Large-scale slope.
+        gamma : ndarray
+            Intermediate-scale slope.
+        """
         
         cdelta   = 1 if self.cdelta is None else self.cdelta
         
@@ -115,10 +193,28 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         
         
     def _projected_realspace(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
-        '''
-        Custom method for projection where we do it all in real-space. Not that slow and
-        can avoid any hankel transform features.
-        '''
+        """
+        Computes the projected profile using a custom real-space integration method. 
+        Advantageous as it can avoid any hankel transform artifacts.
+
+        Parameters
+        ----------
+        cosmo : object
+            CCL cosmology object.
+        r : array_like
+            Radii at which to evaluate the profile.
+        M : array_like
+            Halo mass or array of halo masses.
+        a : float
+            Scale factor, related to redshift by `a = 1 / (1 + z)`.
+        mass_def : object, optional
+            Mass definition object. Default is `MassDef(200, 'critical')`.
+
+        Returns
+        -------
+        proj_prof : ndarray
+            Projected profile evaluated at the specified radii and masses.
+        """
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
@@ -204,6 +300,17 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     
     #Add routines for consistently changing input params across all profiles
     def set_parameter(self, key, value): 
+        """
+        Sets a parameter value for the profile. It can do it recursively in
+        case the profile contains other profiles as its attributes.
+
+        Parameters
+        ----------
+        key : str
+            Name of the parameter to set.
+        value : any
+            New value for the parameter.
+        """
         _set_parameter(self, key, value)
     
     
@@ -228,9 +335,52 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
 
 class DarkMatter(SchneiderProfiles):
-    '''
-    Total DM profile, which is just NFW
-    '''
+    """
+    Class representing the total Dark Matter (DM) profile using the NFW (Navarro-Frenk-White) profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation of the 
+    dark matter profile based on the NFW model. It includes a custom `_real` method for calculating 
+    the real-space dark matter density profile, considering factors like the concentration-mass 
+    relation and truncation radius.
+
+    See `SchneiderProfiles` for more docstring details.
+
+    Notes
+    -----
+    The `DarkMatter` class calculates the dark matter density profile using the NFW model with a 
+    modification for truncation at a specified radius set by `epsilon`. This profile accounts for the concentration-mass 
+    relation, which can be provided as `cdelta` during class init. If none is provided,
+    we use the `ConcentrationDiemer15` model.
+
+    The profile also includes an additional exponential cutoff to prevent numerical overflow and 
+    artifacts at large radii.
+
+    The dark matter density profile is given by:
+
+    .. math::
+
+        \\rho_{\\text{DM}}(r) = \\frac{\\rho_c}{\\frac{r}{r_s} \\left(1 + \\frac{r}{r_s}\\right)^2} 
+        \\cdot \\frac{1}{\\left(1 + \\frac{r}{r_t}\\right)^2}
+
+    where:
+
+    - :math:`\\rho_c` is the characteristic density of the halo.
+    - :math:`r_s` is the scale radius of the halo, defined as :math:`r_s = R/c`.
+    - :math:`r_t = \\epsilon \\cdot R` is the truncation radius, controlled by the parameter `epsilon`.
+    - :math:`r` is the radial distance.
+
+
+    Examples
+    --------
+    Create a `DarkMatter` profile and compute the density at specific radii:
+
+    >>> dm_profile = DarkMatter(**parameters)
+    >>> cosmo = ...  # Define or load a cosmology object
+    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+    >>> M = 1e14  # Halo mass in solar masses
+    >>> a = 0.5  # Scale factor corresponding to redshift z
+    >>> density_profile = dm_profile.real(cosmo, r, M, a)
+    """
 
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -282,9 +432,57 @@ class DarkMatter(SchneiderProfiles):
 
 
 class TwoHalo(SchneiderProfiles):
-    '''
-    Simple two halo term (uses 2pt corr func, not halo model)
-    '''
+    """
+    Class representing the two-halo term profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    of the two-halo term profile. It utilizes the 2-point correlation function directly, rather 
+    than employing the full halo model. 
+
+    See `SchneiderProfiles` for more docstring details.
+
+    Notes
+    -----
+    The `TwoHalo` class calculates the two-halo term profile using the linear matter power spectrum 
+    to ensure the correct large-scale clustering behavior. The profile is defined using the matter-matter 
+    correlation function, :math:`\\xi_{\\text{mm}}(r)`, and a mass-dependent bias term.
+
+    The two-halo term density profile is given by:
+
+    .. math::
+
+        \\rho_{\\text{2h}}(r) = \\left(1 + b(M) \\cdot \\xi_{\\text{mm}}(r)\\right) \\cdot \\rho_{\\text{m}}(a) \\cdot \\text{kfac}
+
+    where:
+
+    - :math:`b(M)` is the linear halo bias, defined as:
+
+      .. math::
+
+          b(M) = 1 + \\frac{q \\nu_M^2 - 1}{\\delta_c} + \\frac{2p}{\\delta_c \\left(1 + (q \\nu_M^2)^p\\right)}
+
+    - :math:`\\nu_M` is the peak height parameter, :math:`\\nu_M = \\delta_c / \\sigma(M)`.
+    - :math:`\\delta_c` is the critical density for spherical collapse.
+    - :math:`\\xi_{\\text{mm}}(r)` is the matter-matter correlation function.
+    - :math:`\\rho_{\\text{m}}(a)` is the mean matter density at scale factor `a`.
+    - :math:`\\text{kfac}` is an additional exponential cutoff factor to prevent numerical overflow.
+
+    See `Sheth & Tormen 1999 <https://arxiv.org/pdf/astro-ph/9901122>`_ for more details on the bias prescription.
+
+    The two-halo term is only valid when the cosmology object's matter power spectrum is set 
+    to 'linear'. An assertion check is included to ensure this.
+
+    Examples
+    --------
+    Create a `TwoHalo` profile and compute the density at specific radii:
+
+    >>> two_halo_profile = TwoHalo(**parameters)
+    >>> cosmo = ...  # Define or load a cosmology object with linear matter power spectrum
+    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+    >>> M = 1e14  # Halo mass in solar masses
+    >>> a = 0.5  # Scale factor corresponding to redshift z
+    >>> density_profile = two_halo_profile.real(cosmo, r, M, a)
+    """
 
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -326,9 +524,61 @@ class TwoHalo(SchneiderProfiles):
 
 
 class Stars(SchneiderProfiles):
-    '''
-    Exponential stellar mass profile
-    '''
+    """
+    Class representing the exponential stellar mass profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    of an exponential stellar mass profile. It calculates the real-space stellar mass 
+    density profile, using parameters to account for factors like stellar mass fraction 
+    and halo radius.
+
+    See `SchneiderProfiles` for more docstring details.
+
+    Notes
+    -----
+    The `Stars` class models the stellar mass distribution with an exponential profile, 
+    modulated by parameters such as `eta`, `tau`, `A`, and `M1`. These parameters 
+    adjust the stellar mass fraction as a function of halo mass. The profile also applies 
+    an exponential cutoff controlled by the `epsilon_h` parameter to define the 
+    characteristic radius of the stellar distribution.
+
+    The stellar mass density profile is given by:
+
+    .. math::
+
+        \\rho_\\star(r) = \\frac{f_{\\text{cga}} M_{\\text{tot}}}{4 \\pi^{3/2} R_h} \\frac{1}{r^2} 
+                          \\exp\\left(-\\frac{r^2}{4 R_h^2}\\right) 
+
+    where:
+
+    - :math:`f_{\\text{cga}}` is the stellar mass fraction, defined as:
+
+      .. math::
+
+          f_{\\text{cga}} = 2 A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau + \\tau_\\delta} 
+          + \\left(\\frac{M}{M_1}\\right)^{\\eta + \\eta_\\delta}\\right)^{-1}
+
+    - :math:`M_{\\text{tot}}` is the total halo mass.
+    - :math:`R_h = \\epsilon_h R` is the characteristic scale radius of the stellar distribution.
+    - :math:`r` is the radial distance.
+
+    The class overrides specific `precision_fftlog` settings to prevent ringing artifacts 
+    in the profiles. This is achieved by setting extreme padding values.
+
+    An additional exponential cutoff is included to prevent numerical overflow and artifacts 
+    at large radii.
+
+    Examples
+    --------
+    Create a `Stars` profile and compute the density at specific radii:
+
+    >>> stars_profile = Stars(**parameters)
+    >>> cosmo = ...  # Define or load a cosmology object
+    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+    >>> M = 1e14  # Halo mass in solar masses
+    >>> a = 0.5  # Scale factor corresponding to redshift z
+    >>> density_profile = stars_profile.real(cosmo, r, M, a)
+    """
     
     def __init__(self, **kwargs):
         
@@ -380,6 +630,62 @@ class Stars(SchneiderProfiles):
 
 
 class Gas(SchneiderProfiles):
+
+    """
+    Class representing the gas density profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    of a gas density profile. It calculates the real-space gas density profile, using
+    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+
+    See `SchneiderProfiles` for more docstring details.
+
+    Notes
+    -----
+    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
+    which is computed based on the total baryonic fraction minus the stellar fraction. 
+    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
+    `theta_co`, and `theta_ej`. These parameters characterize the core and ejection properties 
+    of the gas distribution.
+
+    The gas density profile is given by:
+
+    .. math::
+
+        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
+        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+
+    where:
+
+    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
+    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
+    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
+
+      .. math::
+
+          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
+
+    - :math:`M_{\\text{tot}}` is the total halo mass.
+    - :math:`N` is the normalization factor to ensure mass conservation.
+    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
+    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
+    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
+    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
+    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
+    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
+    - :math:`r` is the radial distance.
+
+    Examples
+    --------
+    Create a `Gas` profile and compute the density at specific radii:
+
+    >>> gas_profile = Gas(**parameters)
+    >>> cosmo = ...  # Define or load a cosmology object
+    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+    >>> M = 1e14  # Halo mass in solar masses
+    >>> a = 0.5  # Scale factor corresponding to redshift z
+    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    """
 
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
 
@@ -440,11 +746,48 @@ class Gas(SchneiderProfiles):
     
     
 class ShockedGas(Gas):
-    '''
-    Implements shocked gas profile, assuming a Rankine-Hugonoit conditions.
-    To simplify, we assume a high mach-number shock, and so the 
-    density is suppressed by a factor of 4.
-    '''
+    """
+    Class representing a shocked gas profile.
+
+    This class is derived from the `Gas` class and provides an implementation 
+    of a shocked gas profile, assuming Rankine-Hugoniot conditions. It models the 
+    effect of a high Mach-number shock, leading to a density suppression by a factor of 4. 
+    This suppression is implemented using a logistic function based on the radial distance.
+
+    Parameters
+    ----------
+    epsilon_shock : float
+        A scaling factor that sets the shock radius as a fraction of the halo radius.
+    width_shock : float
+        The width of the shock transition, controlling how sharply the gas density changes 
+        across the shock front.
+    **kwargs
+        Additional keyword arguments passed to the `Gas` class.
+
+    Notes
+    -----
+    The `ShockedGas` class modifies the gas density profile inherited from the `Gas` class 
+    by applying a shock model. The shock is characterized by the `epsilon_shock` and `width_shock` 
+    parameters. The density is reduced by a factor of 4 at the shock front, a result that 
+    assumes a high Mach-number shock under Rankine-Hugoniot conditions.
+
+    The gas density profile is calculated as:
+
+    .. math::
+
+        \\rho_{\\text{shocked}}(r) = \\rho_{\\text{gas}}(r) \\cdot 
+        \\left[ \\frac{1 - 0.25}{1 + \\exp\\left(\\frac{\\log(r) - \\log(\\epsilon_{\\text{shock}} R)}{\\text{width}_{\\text{shock}}}\\right)} + 0.25 \\right]
+
+    where:
+
+    - :math:`\\rho_{\\text{gas}}(r)` is the gas density profile from the `Gas` class.
+    - :math:`\\epsilon_{\\text{shock}}` sets the location of the shock.
+    - :math:`\\text{width}_{\\text{shock}}` determines the sharpness of the transition.
+    - :math:`r` is the radial distance from the halo center.
+    - The factor of 0.25 represents the maximum possible density drop due to the shock.
+
+    See the `Gas` class for more details on the base gas profile and additional parameters.
+    """
     
     def __init__(self, epsilon_shock, width_shock, **kwargs):
         
@@ -483,6 +826,112 @@ class ShockedGas(Gas):
 
 
 class CollisionlessMatter(SchneiderProfiles):
+
+    """
+    Class representing the collisionless matter density profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    for the collisionless matter density profile. It combines contributions from gas, stars, 
+    and dark matter to compute the total density profile, using an iterative method to solve
+    for the collisionless matter (dark matter and galaxies) after adiabatic relaxation.
+
+    Parameters
+    ----------
+    gas : Gas, optional
+        An instance of the `Gas` class defining the gas profile. If not provided, a default 
+        `Gas` object is created using `kwargs`.
+    stars : Stars, optional
+        An instance of the `Stars` class defining the stellar profile. If not provided, a default 
+        `Stars` object is created using `kwargs`.
+    darkmatter : DarkMatter, optional
+        An instance of the `DarkMatter` class defining the dark matter profile. If not provided, 
+        a default `DarkMatter` object is created using `kwargs`.
+    max_iter : int, optional
+        Maximum number of iterations for the relaxation method. Default is 10.
+    reltol : float, optional
+        Relative tolerance for convergence in the relaxation method. Default is 1e-2.
+    r_min_int : float, optional
+        Minimum radius for integration during the iterative relaxation. Default is 1e-8.
+    r_max_int : float, optional
+        Maximum radius for integration during the iterative relaxation. Default is 1e5.
+    r_steps : int, optional
+        Number of steps in the radius for integration. Default is 5000.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Gas`, `Stars`, and `DarkMatter` 
+        profiles, as well as other parameters from `SchneiderProfiles`.
+
+    
+    Notes
+    -----
+    The `CollisionlessMatter` class computes the total density profile by combining the 
+    contributions from gas, stars, and dark matter profiles. The relaxation method iteratively 
+    adjusts these profiles to achieve equilibrium, ensuring mass conservation. This approach 
+    accounts for different physical components and their interactions within the halo.
+
+    **Calculation Steps:**
+
+    1. **Initial Profiles**: The class starts by calculating the individual density profiles for dark matter, gas, and stars:
+
+       .. math::
+
+           \\rho_{\\text{DM}}(r), \\; \\rho_{\\text{gas}}(r), \\; \\rho_{\\text{stars}}(r)
+
+    2. **Cumulative Mass Profiles**: The cumulative mass profiles are calculated by integrating the density profiles:
+
+       .. math::
+
+           M_{\\text{DM}}(r) = 4\\pi \\int_0^r \\rho_{\\text{DM}}(r') r'^2 dr'
+
+       .. math::
+
+           M_{\\text{gas}}(r) = 4\\pi \\int_0^r \\rho_{\\text{gas}}(r') r'^2 dr'
+
+       .. math::
+
+           M_{\\text{stars}}(r) = 4\\pi \\int_0^r \\rho_{\\text{stars}}(r') r'^2 dr'
+
+    3. **Relaxation Iteration**: The relaxation method iteratively adjusts the mass profile to achieve equilibrium. The adjusted mass profile is calculated as:
+
+       .. math::
+
+           M_{\\text{CLM}}(r) = f_{\\text{clm}}(M_{\\text{DM}} + M_{\\text{gas}} + M_{\\text{stars}})
+
+       where :math:`f_{\\text{clm}}` is calculated using:
+
+       .. math::
+
+           f_{\\text{clm}} = 1 - \\frac{\\Omega_b}{\\Omega_m} + f_{\\text{sga}}
+
+       Here, :math:`f_{\\text{sga}}` is the satellite galaxy mass fraction
+
+    4. **Relaxation Factor Update**: During each iteration, the relaxation factor \( \zeta \) is updated using:
+
+       .. math::
+
+           \\zeta_{\\text{new}} = a \\left( \\left(\\frac{M_{\\text{DM}}}{M_{\\text{CLM}}}\\right)^n - 1 \\right) + 1
+
+       This equation ensures that the mass distribution relaxes towards equilibrium over successive iterations, where \( a \) and \( n \) are parameters controlling the relaxation process.
+
+    5. **Density Profile Calculation**: The final collisionless matter density profile is derived from the adjusted cumulative mass:
+
+       .. math::
+
+           \\rho_{\\text{CLM}}(r) = \\frac{1}{4\\pi r^2} \\frac{d}{dr} M_{\\text{CLM}}(r)
+
+
+    **Integration Range and Convergence**: The relaxation method uses a logarithmic integration range defined by `r_min_int`, `r_max_int`, and `r_steps`. The method iterates until the relative difference falls below `reltol` or the maximum number of iterations (`max_iter`) is reached.
+
+    See `SchneiderProfiles` and associated classes (`Gas`, `Stars`, `DarkMatter`) for more details on 
+    the underlying profiles and parameters.
+
+    Warnings
+    --------
+    The method checks if the provided radius values fall within the integration limits. Warnings are 
+    issued if adjustments to `r_min_int` or `r_max_int` are recommended to cover the full range of 
+    the input radii. Note that sometimes warnings occur because the FFTlog asks for a ridiculously
+    high/low radius, and the profile calculation will just return 0s there. In this case the
+    warning is benign and can be safely ignored
+    """
     
     def __init__(self, gas = None, stars = None, darkmatter = None, max_iter = 10, reltol = 1e-2, r_min_int = 1e-8, r_max_int = 1e5, r_steps = 5000, **kwargs):
         
@@ -619,6 +1068,56 @@ class CollisionlessMatter(SchneiderProfiles):
 
 class DarkMatterOnly(SchneiderProfiles):
 
+    """
+    Class representing a combined dark matter profile using the NFW profile and the two-halo term.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    that combines the contributions from the Navarro-Frenk-White (NFW) profile (representing 
+    dark matter within the halo) and the two-halo term (representing the contribution of 
+    neighboring halos). This approach models the total dark matter distribution by considering 
+    both the one-halo and two-halo terms.
+
+    Parameters
+    ----------
+    darkmatter : DarkMatter, optional
+        An instance of the `DarkMatter` class defining the NFW profile for dark matter within 
+        a halo. If not provided, a default `DarkMatter` object is created using `kwargs`.
+    twohalo : TwoHalo, optional
+        An instance of the `TwoHalo` class defining the two-halo term profile, representing 
+        the contribution from neighboring halos. If not provided, a default `TwoHalo` object 
+        is created using `kwargs`.
+    **kwargs
+        Additional keyword arguments passed to initialize the `DarkMatter` and `TwoHalo` 
+        profiles, as well as other parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `DarkMatterOnly` class models the total dark matter density profile by summing 
+    the contributions from a one-halo term (using the NFW profile) and a two-halo term. 
+    This provides a more complete description of the dark matter distribution, accounting 
+    for both the mass within individual halos and the influence of surrounding structure.
+
+    The total dark matter density profile is calculated as:
+
+    .. math::
+
+        \\rho_{\\text{DMO}}(r) = \\rho_{\\text{NFW}}(r) + \\rho_{\\text{2h}}(r)
+
+    where:
+
+    - :math:`\\rho_{\\text{NFW}}(r)` is the NFW profile for the dark matter halo.
+    - :math:`\\rho_{\\text{2h}}(r)` is the two-halo term representing contributions from 
+      neighboring halos.
+    - :math:`r` is the radial distance from the center of the halo.
+
+    This class provides a way to model dark matter distribution that includes the impact 
+    of both the immediate halo and the larger-scale structure, which is important for 
+    understanding clustering and cosmic structure formation.
+
+    See the `DarkMatter` and `TwoHalo` classes for more details on the underlying profiles 
+    and their parameters.
+    """
+
     def __init__(self, darkmatter = None, twohalo = None, **kwargs):
         
         self.DarkMatter = darkmatter
@@ -646,6 +1145,78 @@ class DarkMatterOnly(SchneiderProfiles):
 
 
 class DarkMatterBaryon(SchneiderProfiles):
+
+    """
+    Class representing a combined dark matter and baryonic matter profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    that combines the contributions from dark matter, gas, stars, and collisionless matter 
+    to compute the total density profile. It includes both one-halo and two-halo terms, 
+    ensuring mass conservation and accounting for both dark matter and baryonic components.
+
+    Parameters
+    ----------
+    gas : Gas, optional
+        An instance of the `Gas` class defining the gas profile. If not provided, a default 
+        `Gas` object is created using `kwargs`.
+    stars : Stars, optional
+        An instance of the `Stars` class defining the stellar profile. If not provided, a default 
+        `Stars` object is created using `kwargs`.
+    collisionlessmatter : CollisionlessMatter, optional
+        An instance of the `CollisionlessMatter` class defining the profile that combines dark matter, 
+        gas, and stars. If not provided, a default `CollisionlessMatter` object is created using `kwargs`.
+    darkmatter : DarkMatter, optional
+        An instance of the `DarkMatter` class defining the NFW profile for dark matter. If not provided, 
+        a default `DarkMatter` object is created using `kwargs`.
+    twohalo : TwoHalo, optional
+        An instance of the `TwoHalo` class defining the two-halo term profile, representing 
+        the contribution of neighboring halos. If not provided, a default `TwoHalo` object is created using `kwargs`.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Gas`, `Stars`, `CollisionlessMatter`, 
+        `DarkMatter`, and `TwoHalo` profiles, as well as other parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `DarkMatterBaryon` class models the total matter density profile by combining 
+    contributions from collisionless matter, gas, stars, dark matter, and the two-halo term. 
+    This comprehensive approach accounts for the interaction and distribution of both dark 
+    matter and baryonic matter within halos and across neighboring halos.
+
+    **Calculation Steps:**
+
+    1. **Normalization of Dark Matter**: To ensure mass conservation, the one-halo term is 
+       normalized so that the dark matter-only profile matches the dark matter-baryon 
+       profile at large radii. The normalization factor is calculated as:
+
+       .. math::
+
+           \\text{Factor} = \\frac{M_{\\text{DMO}}}{M_{\\text{DMB}}}
+
+       where:
+
+       - :math:`M_{\\text{DMO}}` is the total mass from the dark matter-only profile.
+       - :math:`M_{\\text{DMB}}` is the total mass from the combined dark matter and baryon profile.
+
+    2. **Total Density Profile**: The total density profile is computed by summing the contributions 
+       from the collisionless matter, stars, gas, and two-halo term, scaled by the normalization factor:
+
+       .. math::
+
+           \\rho_{\\text{total}}(r) = \\rho_{\\text{CLM}}(r) \\cdot \\text{Factor} + \\rho_{\\text{stars}}(r) \\cdot \\text{Factor} + \\rho_{\\text{gas}}(r) \\cdot \\text{Factor} + \\rho_{\\text{2h}}(r)
+
+       where:
+
+       - :math:`\\rho_{\\text{CLM}}(r)` is the density from the collisionless matter profile.
+       - :math:`\\rho_{\\text{stars}}(r)` is the stellar density profile.
+       - :math:`\\rho_{\\text{gas}}(r)` is the gas density profile.
+       - :math:`\\rho_{\\text{2h}}(r)` is the two-halo term density profile.
+
+    This method ensures that both dark matter and baryonic matter are accounted for, 
+    providing a realistic representation of the total matter distribution.
+
+    See `SchneiderProfiles`, `Gas`, `Stars`, `CollisionlessMatter`, `DarkMatter`, and `TwoHalo` 
+    classes for more details on the underlying profiles and parameters.
+    """
 
     def __init__(self, gas = None, stars = None, collisionlessmatter = None, darkmatter = None, twohalo = None, **kwargs):
         
