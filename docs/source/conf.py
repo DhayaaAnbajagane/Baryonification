@@ -2,9 +2,24 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../../'))
+sys.path.insert(0, os.path.abspath('../../'))
 
-print(os.path.abspath('../../../'))
+print(os.path.abspath('../../'))
+
+def run_apidoc(_):
+    import os
+    import sys
+    import subprocess
+
+    cmd_path = 'sphinx-apidoc'
+    if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
+        # If we are, assemble the path manually
+        cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
+    subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
+                           '-e', '-o', './source', '../../', '../../*setup*'])
+
+def setup(app):
+    app.connect('builder-inited', run_apidoc)
 
 # -- Project information
 
@@ -32,7 +47,7 @@ intersphinx_mapping = {
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
 }
 intersphinx_disabled_domains = ['std']
-autodoc_member_order = 'bysource'
+
 templates_path = ['_templates']
 
 # -- Options for HTML output
