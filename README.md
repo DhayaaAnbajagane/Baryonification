@@ -6,6 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
+[![Documentation Status](https://img.shields.io/readthedocs/baryonification)](https://baryonification.readthedocs.io/en/latest)
 
 ## Overview
 
@@ -20,6 +21,9 @@ A pipeline for *Baryonifying* N-body simulations, by adding baryon-induced corre
 
 
 - **Parallelized**: Painting and baryonification is parallelized under joblib (though the CCL profiles behave properly only in some stable package configs, see yml files in repo. This is still being worked on...)
+
+
+A detailed documentation is available at `readthedocs <https://baryonification.readthedocs.io/en/latest>`_.
 
 ## Installation
 

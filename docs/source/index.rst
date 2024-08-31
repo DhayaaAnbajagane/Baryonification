@@ -1,4 +1,4 @@
-.. image:: LOGO.png
+.. image:: LOGO_light.png
    :width: 65 %
    :align: center
 
