@@ -16,8 +16,10 @@ def run_apidoc(_):
     if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
         # If we are, assemble the path manually
         cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
-    subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
-                           '-e', '-o', '../../docs/source', '../../../Baryonification', '../../*setup*'])
+    
+    for module in ['Profiles', 'Runners', 'utils']:
+        subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
+                            '-e', '-o', '../../docs/source', '../../../Baryonification/' + module, '../../../Baryonification/*setup*'])
 
 
 def setup(app):
