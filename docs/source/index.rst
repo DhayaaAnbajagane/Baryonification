@@ -12,6 +12,8 @@ of the Core Cosmology Library (CCL) and can work directly on full-sky maps (or a
    :maxdepth: 4
    :caption: Contents:
 
+   installation
+   quickstart
    modules
 
 Indices and tables
