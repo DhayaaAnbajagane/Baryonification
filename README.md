@@ -23,7 +23,7 @@ A pipeline for *Baryonifying* N-body simulations, by adding baryon-induced corre
 - **Parallelized**: Painting and baryonification is parallelized under joblib (though the CCL profiles behave properly only in some stable package configs, see yml files in repo. This is still being worked on...)
 
 
-A detailed documentation is available at `readthedocs <https://baryonification.readthedocs.io/en/latest>`_.
+A detailed documentation is available at [readthedocs](https://baryonification.readthedocs.io/en/latest).
 
 ## Installation
 
