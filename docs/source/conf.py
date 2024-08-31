@@ -20,6 +20,9 @@ def run_apidoc(_):
     for module in ['Profiles', 'Runners', 'utils']:
         subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
                             '-e', '-o', '../../docs/source', '../../../Baryonification/' + module, '../../../Baryonification/*setup*'])
+        
+    subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
+                        '-e', '-o', '../../docs/source', '../../../Baryonification/', '../../../Baryonification/*setup*'])
 
 
 def setup(app):
