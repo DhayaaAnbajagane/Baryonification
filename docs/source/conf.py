@@ -1,5 +1,11 @@
 # Configuration file for the Sphinx documentation builder.
 
+import os
+import sys
+sys.path.insert(0, os.path.abspath('../../../'))
+
+print(os.path.abspath('../../../'))
+
 # -- Project information
 
 project = 'Baryonification'
@@ -26,7 +32,7 @@ intersphinx_mapping = {
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
 }
 intersphinx_disabled_domains = ['std']
-
+autodoc_member_order = 'bysource'
 templates_path = ['_templates']
 
 # -- Options for HTML output
