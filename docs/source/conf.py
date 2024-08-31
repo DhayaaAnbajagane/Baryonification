@@ -15,7 +15,6 @@ def run_apidoc(_):
     import sys
     import subprocess
 
-    # Define the replacement strings
     subprocess.check_call(['mv', '../../../latest', '../../../Baryonification'])
     
     cmd_path = 'sphinx-apidoc'
@@ -25,13 +24,7 @@ def run_apidoc(_):
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
                            '-e', '-o', './source', '../../', '../../*setup*'])
     
-    subprocess.check_call(['cat', './source/latest.Profiles.BaryonCorrection.rst'])
-
-    subprocess.check_call(['cat', './source/latest.utils.rst'])
-
-    
-
-    
+    subprocess.check_call(['mv', '../../../Baryonification', '../../../latest'])
 
 
 def setup(app):
