@@ -7,9 +7,6 @@ sys.path.insert(0, os.path.abspath('../../'))
 print(os.path.abspath('../../'))
 print(os.listdir(os.path.abspath('../../')))
 
-print(os.path.abspath('../../../../'))
-print(os.listdir(os.path.abspath('../../../../')))
-
 def run_apidoc(_):
     import os
     import sys
@@ -21,6 +18,10 @@ def run_apidoc(_):
         cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
                            '-e', '-o', './source', '../../', '../../*setup*'])
+    
+    subprocess.check_call(['cat', './source/latest.Profiles.BaryonCorrection.rst'])
+
+    subprocess.check_call(['cat', './source/latest.utils.rst'])
 
 def setup(app):
     app.connect('builder-inited', run_apidoc)
