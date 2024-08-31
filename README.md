@@ -1,4 +1,9 @@
-![Logo](https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO.png "Logo")
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO_light.png">
+  <img alt="Logo" src="https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO_dark.png" title="Logo">
+</picture>
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
 
