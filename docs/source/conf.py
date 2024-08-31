@@ -23,7 +23,7 @@ def run_apidoc(_):
         # If we are, assemble the path manually
         cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
-                           '-e', '-o', './source', '../../', '../../*setup*'])
+                           '-e', '-o', '../../docs/source', '../../', '../../*setup*'])
     
 
 def setup(app):
