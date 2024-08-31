@@ -26,6 +26,10 @@ def run_apidoc(_):
         cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
                            '-e', '-o', '../../docs/source', '../../', '../../*setup*'])
+
+
+    # /home/docs/checkouts/readthedocs.org/user_builds/baryonification/checkouts/latest/docs/source/index.rst
+    # /home/docs/checkouts/readthedocs.org/user_builds/baryonification/checkouts/latest
     
 
 def setup(app):
@@ -39,6 +43,8 @@ author = 'Dhayaa Anbajagane'
 
 release = '0.1'
 version = '0.1.0'
+
+master_doc = './'
 
 # -- General configuration
 
