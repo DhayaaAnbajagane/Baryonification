@@ -16,8 +16,7 @@ def run_apidoc(_):
     import subprocess
 
     # Define the replacement strings
-    old_string = "latest"
-    subprocess.check_call(['mv', './latest', 'Baryonification'])
+    subprocess.check_call(['mv', '../latest', '../Baryonification'])
     
     cmd_path = 'sphinx-apidoc'
     if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
