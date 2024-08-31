@@ -1,4 +1,5 @@
-## Quickstart
+Quickstart
+============
 
 ```python
 import Baryonification as bfn

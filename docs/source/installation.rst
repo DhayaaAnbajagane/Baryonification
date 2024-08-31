@@ -1,4 +1,5 @@
-## Installation
+Installation
+============
 
 There is currently no support for PyPi or conda, so you (unfortunately) need to install from source.
 To install the package, run the following command:

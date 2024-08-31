@@ -10,7 +10,6 @@ of the Core Cosmology Library (CCL) and can work directly on full-sky maps (or a
 
 .. toctree::
    :maxdepth: 4
-   :caption: Contents:
 
    installation
    quickstart
