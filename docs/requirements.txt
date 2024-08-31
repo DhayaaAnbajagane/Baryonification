@@ -5,4 +5,4 @@ healpy
 scipy
 numpy
 numba
-pyccl>=2.0.0,<3.0.0
+pyccl>=2.0.0
