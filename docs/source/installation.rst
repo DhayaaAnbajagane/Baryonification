@@ -5,11 +5,13 @@ There is currently no support for PyPi or conda, so you (unfortunately) need to 
 To install the package, run the following command:
 
 .. code-block:: bash
+
     pip install git+https://github.com/DhayaaAnbajagane/Baryonification.git
 
 or alternatively you can download the repo yourself and set it up,
 
 .. code-block:: bash
+    
     git clone https://github.com/DhayaaAnbajagane/Baryonification.git
     cd Baryonification
     pip install -e .

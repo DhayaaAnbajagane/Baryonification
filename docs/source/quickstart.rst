@@ -2,6 +2,7 @@ Quickstart
 ============
 
 .. code-block:: python
+    
     import Baryonification as bfn
     import pyccl as ccl
 
