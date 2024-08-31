@@ -23,6 +23,38 @@ def run_apidoc(_):
 
     subprocess.check_call(['cat', './source/latest.utils.rst'])
 
+    # Define the replacement strings
+    old_string = "latest"
+    new_string = "Baryonification"
+
+    # Find and rename files
+    find_command = f"find . -type f -name '*{old_string}*'"
+    result = subprocess.run(find_command, shell=True, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print("Error finding files:", result.stderr)
+    else:
+        files_to_rename = result.stdout.splitlines()
+        for file_path in files_to_rename:
+            new_file_path = file_path.replace(old_string, new_string)
+            rename_command = f"mv '{file_path}' '{new_file_path}'"
+            subprocess.run(rename_command, shell=True)
+            print(f"Renamed file: {file_path} to {new_file_path}")
+
+    # Find and replace in file contents
+    find_command = f"find . -type f -name '*{new_string}*'"
+    result = subprocess.run(find_command, shell=True, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print("Error finding files for content replacement:", result.stderr)
+    else:
+        files_to_modify = result.stdout.splitlines()
+        for file_path in files_to_modify:
+            sed_command = f"sed -i 's/{old_string}/{new_string}/g' '{file_path}'"
+            subprocess.run(sed_command, shell=True)
+            print(f"Modified contents of file: {file_path}")
+
+
 def setup(app):
     app.connect('builder-inited', run_apidoc)
 
