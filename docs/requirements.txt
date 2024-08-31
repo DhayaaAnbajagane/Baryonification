@@ -5,4 +5,5 @@ healpy
 scipy
 numpy
 numba
+cmake
 pyccl>=2.0.0
