@@ -3,6 +3,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('../../../'))
 
 print(os.path.abspath('../../'))
 print(os.listdir(os.path.abspath('../../')))
@@ -24,8 +25,6 @@ def run_apidoc(_):
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
                            '-e', '-o', './source', '../../', '../../*setup*'])
     
-    subprocess.check_call(['mv', '../../../Baryonification', '../../../latest'])
-
 
 def setup(app):
     app.connect('builder-inited', run_apidoc)
