@@ -1,7 +1,6 @@
-# Baryonification
-
+![Logo](https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/docs-testing/docs/source/LOGO.png "Logo")
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python Version](https://img.shields.io/badge/python-3.6%2B-brightgreen.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
 
 ## Overview
 

@@ -1,4 +1,4 @@
-name: /scratch/midway2/dhayaa/My_env/pyccl_env_extended
+name: pyccl_env
 channels:
   - conda-forge
   - anaconda
@@ -161,4 +161,8 @@ dependencies:
   - zipp=3.15.0=pyhd8ed1ab_0
   - zlib=1.2.13=h5eee18b_0
   - zstd=1.5.0=ha95c52a_0
-prefix: /scratch/midway2/dhayaa/My_env/pyccl_env_extended
+  - pip>=20.1  # pip is needed as dependency
+  - pip:
+    - sphinx==7.1.2
+    - sphinx-rtd-theme==1.3.0rc1
+    - numba==0.56.4
