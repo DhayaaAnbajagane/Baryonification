@@ -5,14 +5,6 @@ import sys
 sys.path.insert(0, os.path.abspath('../../'))
 sys.path.insert(0, os.path.abspath('../../../'))
 
-print(os.path.abspath('../../'))
-print(os.listdir(os.path.abspath('../../')))
-print(os.listdir(os.path.abspath('../../docs')))
-print(os.listdir(os.path.abspath('../../docs/source')))
-
-print(os.path.abspath('../../../../'))
-print(os.listdir(os.path.abspath('../../../../')))
-
 def run_apidoc(_):
     import os
     import sys
@@ -25,12 +17,8 @@ def run_apidoc(_):
         # If we are, assemble the path manually
         cmd_path = os.path.abspath(os.path.join(sys.prefix, 'bin', 'sphinx-apidoc'))
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
-                           '-e', '-o', '../../docs/source', '../../', '../../*setup*'])
+                           '-e', '-o', '../../docs/source', '../../../Baryonification', '../../*setup*'])
 
-
-    # /home/docs/checkouts/readthedocs.org/user_builds/baryonification/checkouts/latest/docs/source/index.rst
-    # /home/docs/checkouts/readthedocs.org/user_builds/baryonification/checkouts/latest
-    
 
 def setup(app):
     app.connect('builder-inited', run_apidoc)
