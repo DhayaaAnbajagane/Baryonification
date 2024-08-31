@@ -6,4 +6,5 @@ scipy
 numpy
 numba
 cmake
-pyccl>=2.0.0
+joblib
+pyccl==2.*
