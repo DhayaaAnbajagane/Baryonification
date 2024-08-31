@@ -18,7 +18,7 @@ def run_apidoc(_):
     import sys
     import subprocess
 
-    subprocess.check_call(['cp', '../../../latest', '../../../Baryonification'])
+    subprocess.check_call(['cp', '-r', '../../../latest', '../../../Baryonification'])
     
     cmd_path = 'sphinx-apidoc'
     if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
