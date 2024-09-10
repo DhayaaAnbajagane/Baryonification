@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
-[![Documentation Status](https://img.shields.io/readthedocs/baryonification)](https://baryonification.readthedocs.io/en/latest)
+[![Documentation Status](https://img.shields.io/readthedocs/baryonification?color=blue)](https://baryonification.readthedocs.io/en/latest)
 
 ## Overview
 
@@ -88,17 +88,22 @@ See the ```/examples``` folder for more notebooks demonstrating how to use the c
 
 ## Attribution
 
-If you use this code or derivatives of it, please cite Anbajagane, Pandey & Chang 2024.
+If you use this code or derivatives of it, please cite [Anbajagane, Pandey & Chang 2024](https://arxiv.org/abs/2409.03822).
 
 ```bibtex
-@article{author2024projectname,
-  title={Title of the Academic Paper},
-  author={Author Name and Collaborators},
-  journal={Journal Name},
-  year={2024},
-  volume={Volume},
-  pages={Pages},
-  doi={DOI Number},
-  url={URL to paper}
+@ARTICLE{Anbajagane:2024:Baryonification,
+       author = {{Anbajagane}, Dhayaa and {Pandey}, Shivam and {Chang}, Chihway},
+        title = "{Map-level baryonification: Efficient modelling of higher-order correlations in the weak lensing and thermal Sunyaev-Zeldovich fields}",
+      journal = {arXiv e-prints},
+     keywords = {Astrophysics - Cosmology and Nongalactic Astrophysics, Astrophysics - Astrophysics of Galaxies},
+         year = 2024,
+        month = sep,
+          eid = {arXiv:2409.03822},
+        pages = {arXiv:2409.03822},
+archivePrefix = {arXiv},
+       eprint = {2409.03822},
+ primaryClass = {astro-ph.CO},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2024arXiv240903822A},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
 ```
