@@ -25,6 +25,11 @@ A pipeline for *Baryonifying* N-body simulations, by adding baryon-induced corre
 
 A detailed documentation is available at [readthedocs](https://baryonification.readthedocs.io/en/latest).
 
+## Environment
+
+The ```Baryonification``` is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to create an environment that contains all necessary packages prior to your installation.
+
+
 ## Installation
 
 To install the package, run the following command:
@@ -41,12 +46,7 @@ cd Baryonification
 pip install -e .
 ```
 
-This will keep the source files in the location you git clone'd from.
-
-
-## Environment
-
-The ```Baryonification``` is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to an environment that contains all necessary packages.
+This will keep the source files in the location you git clone'd from (eg. if you are developing on the pipeline and are making frequent edits to it)
 
 
 ## Quickstart

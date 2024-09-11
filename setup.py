@@ -5,7 +5,7 @@ setup(
     version='0.1.0',
     author='Dhayaa Anbajagane',
     author_email='dhayaa@uchicago.edu',
-    description='A pipeline for adding baryonic imprints to N-body simulations',
+    description='A pipeline for adding baryonic imprints and thermodynamic maps to N-body simulations',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/DhayaaAnbajagane/Baryonification',
