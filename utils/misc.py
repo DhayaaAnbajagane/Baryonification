@@ -2,7 +2,7 @@ import numpy as np
 import pyccl as ccl
 from operator import add, mul, sub, truediv, pow, abs, neg, pos
 
-__all__ = ['generate_operator_method']
+__all__ = ['generate_operator_method', 'destory_Pk']
 
 def generate_operator_method(op, reflect = False):
     """
