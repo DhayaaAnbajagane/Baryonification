@@ -43,6 +43,9 @@ class SimpleParallel(object):
       execution.
     - The number of parallel jobs will be adjusted to match the number of Runners if there are fewer Runners than
       available CPUs.
+    - Pickling errors can occur if the cosmology object (which is stored as an attribute in many classes) contains
+      SwigPyObjects that are not pickleable. This happens with P(k) calculations. The baryonification pipeline
+      natively destroys these problem objects. If you are facing issues, perform an explicit check of this.
 
     See Also
     --------
@@ -170,6 +173,9 @@ class SplitJoinParallel(object):
       `model`, `mass_def`, `epsilon_max`, and `use_ellipticity`.
     - The number of parallel jobs will be adjusted to match the number of splits if there are fewer splits than
       available CPUs.
+    - Pickling errors can occur if the cosmology object (which is stored as an attribute in many classes) contains
+      SwigPyObjects that are not pickleable. This happens with P(k) calculations. The baryonification pipeline
+      natively destroys these problem objects. If you are facing issues, perform an explicit check of this.
 
     See Also
     --------

@@ -627,7 +627,7 @@ class ThermalSZ(SchneiderProfiles):
     
     def __init__(self, pressure = None, **kwargs):
         
-        self.pressure = Pressure
+        self.pressure = pressure
         if self.pressure is None: self.pressure = Pressure(**kwargs)
 
         super().__init__(**kwargs)

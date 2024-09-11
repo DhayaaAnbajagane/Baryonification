@@ -4,9 +4,11 @@ import pyccl as ccl
 from tqdm import tqdm
 from scipy import interpolate
 import warnings
+import copy
 from itertools import product
 
 from ..utils.Tabulate import _set_parameter
+from ..utils.misc     import destory_Pk
 
 __all__ = ['BaryonificationClass', 'Baryonification3D', 'Baryonification2D']
 
@@ -286,7 +288,12 @@ class BaryonificationClass(object):
         self.raw_input_r_range = np.log(r)
         for k in other_params.keys(): setattr(self, 'raw_input_%s_range' % k, other_params[k]) #Save other raw inputs too
             
-        self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.NaN)        
+        self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.NaN)    
+
+        #Once all tabulation is done, we don't need to keep P(k) calculations in cosmology object.
+        #This is good because the Pk class is not pickleable, so by destorying it here we
+        #are able to keep this class pickleable.
+        self.cosmo = destory_Pk(self.cosmo)
 
     
     def _readout(self, r, M, a, **kwargs):

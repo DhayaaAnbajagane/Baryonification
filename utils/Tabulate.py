@@ -5,6 +5,8 @@ from tqdm import tqdm
 from itertools import product
 from scipy import interpolate
 
+from ..utils.misc import destory_Pk
+
 __all__ = ['_set_parameter', 'TabulatedProfile', 'ParamTabulatedProfile']
 
 def _set_parameter(obj, key, value):
@@ -234,6 +236,11 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         
         self.interp3D = interpolate.RegularGridInterpolator(input_grid_1, np.log(interp3D), bounds_error = False)
         self.interp2D = interpolate.RegularGridInterpolator(input_grid_1, np.log(interp2D), bounds_error = False)
+
+        #Once all tabulation is done, we don't need to keep P(k) calculations in cosmology object.
+        #This is good because the Pk class is not pickleable, so by destorying it here we
+        #are able to keep this class pickleable.
+        self.cosmo = destory_Pk(self.cosmo)
 
 
     def _readout(self, r, M, a, table):
@@ -559,7 +566,10 @@ class ParamTabulatedProfile(object):
         self.interp3D = interpolate.RegularGridInterpolator(input_grid_1, np.log(interp3D), bounds_error = False)
         self.interp2D = interpolate.RegularGridInterpolator(input_grid_1, np.log(interp2D), bounds_error = False)
 
-        return 0
+        #Once all tabulation is done, we don't need to keep P(k) calculations in cosmology object.
+        #This is good because the Pk class is not pickleable, so by destorying it here we
+        #are able to keep this class pickleable.
+        self.cosmo = destory_Pk(self.cosmo)
 
 
     def _readout(self, r, M, a, table, **kwargs):
