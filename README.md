@@ -32,6 +32,12 @@ The ```Baryonification``` is designed to have minimal dependencies on external p
 
 ## Installation
 
+The package can be installed through pip
+
+```bash
+pip install Baryonification
+```
+
 To install the package, run the following command:
 
 ```bash

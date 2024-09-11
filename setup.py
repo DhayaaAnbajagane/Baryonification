@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='Baryonification',
-    version='0.1.0',
+    version='0.1.1',
     author='Dhayaa Anbajagane',
     author_email='dhayaa@uchicago.edu',
     description='A pipeline for adding baryonic imprints and thermodynamic maps to N-body simulations',
