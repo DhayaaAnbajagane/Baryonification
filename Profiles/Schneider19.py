@@ -118,14 +118,11 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
         #Constant that helps with the fourier transform convolution integral.
         #This value minimized the ringing due to the transforms
-        self.precision_fftlog['plaw_fourier'] = -2
+        self.update_precision_fftlog(plaw_fourier = -2)
 
         #Need this to prevent projected profile from artificially cutting off
-        self.precision_fftlog['padding_lo_fftlog'] = 1e-2
-        self.precision_fftlog['padding_hi_fftlog'] = 1e2
-
-        self.precision_fftlog['padding_lo_extra'] = 1e-4
-        self.precision_fftlog['padding_hi_extra'] = 1e4
+        self.update_precision_fftlog(padding_lo_fftlog = 1e-2, padding_hi_fftlog = 1e2,
+                                     padding_lo_extra  = 1e-4, padding_hi_extra  = 1e4)
         
     
     @property
@@ -587,8 +584,7 @@ class Stars(SchneiderProfiles):
         #For some reason, we need to make this extreme in order
         #to prevent ringing in the profiles. Haven't figured out
         #why this is the case
-        self.precision_fftlog['padding_lo_fftlog'] = 1e-5
-        self.precision_fftlog['padding_hi_fftlog'] = 1e5
+        self.update_precision_fftlog(padding_lo_fftlog = 1e-5, padding_hi_fftlog = 1e5)
 
     
     def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):

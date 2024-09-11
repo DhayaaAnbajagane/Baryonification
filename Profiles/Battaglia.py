@@ -116,11 +116,10 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
 
         #Constant that helps with the fourier transform convolution integral.
         #This value minimized the ringing due to the transforms
-        self.precision_fftlog['plaw_fourier'] = -2
+        self.update_precision_fftlog(plaw_fourier = -2)
 
         #Need this to prevent projected profile from artificially cutting off
-        self.precision_fftlog['padding_lo_fftlog'] = 1e-4
-        self.precision_fftlog['padding_hi_fftlog'] = 1e4
+        self.update_precision_fftlog(padding_lo_fftlog = 1e-4, padding_hi_fftlog = 1e4)
 
     def _real(self, cosmo, r, M, a, mass_def=None):
 
@@ -263,11 +262,10 @@ class BattagliaGasDensity(ccl.halos.profiles.HaloProfile):
 
         #Constant that helps with the fourier transform convolution integral.
         #This value minimized the ringing due to the transforms
-        self.precision_fftlog['plaw_fourier'] = -2
+        self.update_precision_fftlog(plaw_fourier = -2)
 
         #Need this to prevent projected profile from artificially cutting off
-        self.precision_fftlog['padding_lo_fftlog'] = 1e-4
-        self.precision_fftlog['padding_hi_fftlog'] = 1e4
+        self.update_precision_fftlog(padding_lo_fftlog = 1e-4, padding_hi_fftlog = 1e4)
 
 
     def _real(self, cosmo, r, M, a, mass_def=None):

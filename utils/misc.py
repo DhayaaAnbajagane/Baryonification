@@ -125,3 +125,33 @@ def generate_operator_method(op, reflect = False):
             return Combined
 
     return operator_method
+
+
+def destory_Pk(cosmo):
+    """
+    Removes some SwigPyObject from cosmo that are unable to be pickled
+    and therefore caused the multiprocessing to break.
+
+    Parameters
+    ----------
+    cosmo : object
+        A ccl Cosmology object
+    
+    Returns
+    -------
+    cosmo : object
+        The ccl Cosmology object but with some attributes (that are necessarily
+        SwigPyObjects) destoryed in order to allow pickling.
+
+    Notes
+    -----
+    - For efficiency in pipeline, this function should be used on a Cosmology object
+    only once the main profile/cosmology operations are finished. Otherwise this
+    forces the recalculation of the power spectrum (which may not be an issue depending
+    on your use-case, but something to be aware of).
+    """
+
+    cosmo._pk_lin = {}
+    cosmo._pk_nl  = {}
+
+    return cosmo
