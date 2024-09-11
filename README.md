@@ -20,7 +20,7 @@ A pipeline for *Baryonifying* N-body simulations, by adding baryon-induced corre
 - **Maps, grids, and snapshots**: Work directly with 2D fields (eg. HealPix maps or 2D grids) but can also use 3D grids or full particle snapshots
 
 
-- **Parallelized**: Painting and baryonification is parallelized under joblib (though the CCL profiles behave properly only in some stable package configs, see yml files in repo. This is still being worked on...)
+- **Parallelized**: Painting and baryonification is parallelized under joblib.
 
 
 A detailed documentation is available at [readthedocs](https://baryonification.readthedocs.io/en/latest).
@@ -42,6 +42,11 @@ pip install -e .
 ```
 
 This will keep the source files in the location you git clone'd from.
+
+
+## Environment
+
+The ```Baryonification``` is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to an environment that contains all necessary packages.
 
 
 ## Quickstart
@@ -107,3 +112,7 @@ archivePrefix = {arXiv},
       adsnote = {Provided by the SAO/NASA Astrophysics Data System}
 }
 ```
+
+## Contact
+
+Please contant Dhayaa Anbajagane (dhayaa at uchicago dot edu) for any questions on the pipeline (or bugs that you find!)
