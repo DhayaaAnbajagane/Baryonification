@@ -3,8 +3,6 @@ import pyccl as ccl
 from scipy.spatial import KDTree 
 from tqdm import tqdm
 
-MY_FILL_VAL = np.NaN
-
 __all__ = ['DefaultRunnerSnapshot', 'BaryonifySnapshot']
 
 class DefaultRunnerSnapshot(object):

@@ -32,13 +32,13 @@ The ```Baryonification``` is designed to have minimal dependencies on external p
 
 ## Installation
 
-The package can be installed through pip
+The package can be installed through PyPi
 
 ```bash
 pip install Baryonification
 ```
 
-To install the package, run the following command:
+You can also install directly from source, by running the following command:
 
 ```bash
 pip install git+https://github.com/DhayaaAnbajagane/Baryonification.git
@@ -52,7 +52,7 @@ cd Baryonification
 pip install -e .
 ```
 
-This will keep the source files in the location you git clone'd from (eg. if you are developing on the pipeline and are making frequent edits to it)
+The latter will keep the source files in the location you git clone'd from, and is useful if you are developing on the pipeline and are making frequent edits to it.
 
 
 ## Quickstart

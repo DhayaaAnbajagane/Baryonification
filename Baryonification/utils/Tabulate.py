@@ -528,8 +528,8 @@ class ParamTabulatedProfile(object):
         dlnr     = np.log(r[1]) - np.log(r[0])
 
         p_keys   = list(other_params.keys()); setattr(self, 'p_keys', p_keys)
-        interp3D = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys]) + np.NaN
-        interp2D = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys]) + np.NaN
+        interp3D = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys]) + np.nan
+        interp2D = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys]) + np.nan
 
         #If other_params is empty then iterator will be empty and the code still works fine
         iterator = [p for p in product(*[np.arange(other_params[k].size) for k in p_keys])]

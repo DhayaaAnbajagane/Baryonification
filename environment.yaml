@@ -7,7 +7,7 @@ channels:
 
 dependencies:
   - pyccl==2.*
-  - numpy
+  - numpy==1.*
   - scipy
   - joblib
   - tqdm
@@ -17,4 +17,4 @@ dependencies:
   - pip  
 
   - pip:
-    - numba    
+    - numba

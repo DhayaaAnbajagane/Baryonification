@@ -8,8 +8,6 @@ from scipy import interpolate
 from tqdm import tqdm
 from ..utils import ParamTabulatedProfile
 
-MY_FILL_VAL = np.NaN
-
 __all__ = ['DefaultRunner', 'BaryonifyShell', 'PaintProfilesShell', 'regrid_pixels_hpix']
 
 @njit

@@ -288,7 +288,7 @@ class BaryonificationClass(object):
         self.raw_input_r_range = np.log(r)
         for k in other_params.keys(): setattr(self, 'raw_input_%s_range' % k, other_params[k]) #Save other raw inputs too
             
-        self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.NaN)    
+        self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.nan)    
 
         #Once all tabulation is done, we don't need to keep P(k) calculations in cosmology object.
         #This is good because the Pk class is not pickleable, so by destorying it here we

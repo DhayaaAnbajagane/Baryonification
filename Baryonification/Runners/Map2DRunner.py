@@ -7,8 +7,6 @@ from tqdm import tqdm
 from numba import njit
 from ..utils import ParamTabulatedProfile
 
-MY_FILL_VAL = np.NaN
-
 from ..utils.debug import log_time
 
 __all__ = ['DefaultRunnerGrid', 'BaryonifyGrid', 'PaintProfilesGrid', 'regrid_pixels_2D', 'regrid_pixels_3D']
