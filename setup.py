@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='Baryonification',
-    version='0.1.1',
+    version='0.1.2',
     author='Dhayaa Anbajagane',
     author_email='dhayaa@uchicago.edu',
     description='A pipeline for adding baryonic imprints and thermodynamic maps to N-body simulations',
@@ -20,9 +20,9 @@ setup(
         'tqdm',
         'healpy',
         'scipy',
-        'numpy',
+        'numpy==1.*',
         'numba',
-        'pyccl>=2.0.0,<3.0.0'
+        'pyccl==2.8.0'
     ],
     entry_points={
         'console_scripts': [

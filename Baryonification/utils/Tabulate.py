@@ -120,10 +120,10 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
     _readout(r, M, a, table)
         Evaluates the profile from the interpolation table for given radii, masses, and scale factors.
     
-    _real(cosmo, r, M, a, mass_def=None)
+    _real(cosmo, r, M, a)
         Computes the real-space profile using the tabulated interpolator.
     
-    _projected(cosmo, r, M, a, mass_def=None)
+    _projected(cosmo, r, M, a)
         Computes the projected-space profile using the tabulated interpolator.
 
     Examples
@@ -222,8 +222,8 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
                 a_j = 1/(1 + z_range[j])
 
                 #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                interp3D[j, :, :] = self.model.real(self.cosmo, r, M_range, a_j, mass_def = self.mass_def)
-                interp2D[j, :, :] = self.model.projected(self.cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
+                interp3D[j, :, :] = self.model.real(self.cosmo, r, M_range, a_j)
+                interp2D[j, :, :] = self.model.projected(self.cosmo, r, M_range, a_j) * a_j
                 pbar.update(1)
 
         input_grid_1 = (np.log(1 + z_range), np.log(M_range), np.log(r))
@@ -294,7 +294,7 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         return prof
             
         
-    def _real(self, cosmo, r, M, a, mass_def = None):
+    def _real(self, cosmo, r, M, a):
         """
         Computes the real-space profile using the tabulated interpolator.
 
@@ -312,9 +312,6 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         a : float or array_like
             The scale factor at which to compute the profile.
         
-        mass_def : object, optional
-            The mass definition to use for the profile. If `None`, the class's default mass definition is used.
-
         Returns
         -------
         prof : ndarray
@@ -329,7 +326,7 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         return prof
     
     
-    def _projected(self, cosmo, r, M, a, mass_def = None):
+    def _projected(self, cosmo, r, M, a):
         """
         Computes the projected-space profile using the tabulated interpolator.
 
@@ -347,9 +344,6 @@ class TabulatedProfile(ccl.halos.profiles.HaloProfile):
         a : float or array_like
             The scale factor at which to compute the profile.
         
-        mass_def : object, optional
-            The mass definition to use for the profile. If `None`, the class's default mass definition is used.
-
         Returns
         -------
         prof : ndarray
@@ -422,10 +416,10 @@ class ParamTabulatedProfile(object):
     _readout(r, M, a, table, **kwargs)
         Evaluates the profile from the interpolation table for given radii, masses, scale factors, and other parameters.
     
-    real(cosmo, r, M, a, mass_def=None, **kwargs)
+    real(cosmo, r, M, a, **kwargs)
         Computes the real-space profile using the tabulated interpolator.
     
-    projected(cosmo, r, M, a, mass_def=None, **kwargs)
+    projected(cosmo, r, M, a, **kwargs)
         Computes the projected-space profile using the tabulated interpolator.
 
     Examples
@@ -549,8 +543,8 @@ class ParamTabulatedProfile(object):
                     index = tuple([j, slice(None), slice(None)] + list(c))
                     
                     #Extra factor of "a" accounts for projection in ccl being done in comoving, not physical units
-                    interp3D[index] = self.model.real(self.cosmo, r, M_range, a_j, mass_def = self.mass_def)
-                    interp2D[index] = self.model.projected(self.cosmo, r, M_range, a_j, mass_def = self.mass_def) * a_j
+                    interp3D[index] = self.model.real(self.cosmo, r, M_range, a_j)
+                    interp2D[index] = self.model.projected(self.cosmo, r, M_range, a_j) * a_j
                     pbar.update(1)
                     
 
@@ -627,7 +621,7 @@ class ParamTabulatedProfile(object):
         return prof
     
             
-    def real(self, cosmo, r, M, a, mass_def = None, **kwargs):
+    def real(self, cosmo, r, M, a, **kwargs):
         """
         Computes the real-space profile using the tabulated interpolator.
 
@@ -646,12 +640,7 @@ class ParamTabulatedProfile(object):
         
         a : float or array_like
             The scale factor at which to compute the profile.
-        
-        mass_def : object, optional
-            The mass definition to use for the profile. If `None`, the class's default mass definition is used.
-            It's not actually used, but we allow it as input to have consistent
-            API with the CCL profile methods.
-        
+                
         **kwargs
             Additional parameters required for the profile evaluation.
 
@@ -672,7 +661,7 @@ class ParamTabulatedProfile(object):
         return prof
     
     
-    def projected(self, cosmo, r, M, a, mass_def = None, **kwargs):
+    def projected(self, cosmo, r, M, a, **kwargs):
         """
         Computes the projected-space profile using the tabulated interpolator.
 
@@ -691,12 +680,7 @@ class ParamTabulatedProfile(object):
         
         a : float or array_like
             The scale factor at which to compute the profile.
-        
-        mass_def : object, optional
-            The mass definition to use for the profile. 
-            It's not actually used, but we allow it as input to have consistent
-            API with the CCL profile methods.
-        
+                
         **kwargs
             Additional parameters required for the profile evaluation.
 
