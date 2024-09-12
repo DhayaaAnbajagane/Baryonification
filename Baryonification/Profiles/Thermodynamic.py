@@ -98,7 +98,7 @@ class Pressure(SchneiderProfiles):
 
     Methods
     -------
-    _real(cosmo, r, M, a, mass_def)
+    _real(cosmo, r, M, a)
         Computes the gas pressure profile based on the given cosmology, radii, mass, 
         scale factor, and mass definition.
     """
@@ -121,7 +121,7 @@ class Pressure(SchneiderProfiles):
         super().__init__(**kwargs)
         
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
         """
         Computes the gas pressure profile using hydrostatic equilibrium.
@@ -140,8 +140,6 @@ class Pressure(SchneiderProfiles):
             Halo mass or array of halo masses, in solar masses.
         a : float
             Scale factor, related to redshift by `a = 1 / (1 + z)`.
-        mass_def : object, optional
-            Mass definition object from CCL, specifying the overdensity criterion. Default is `MassDef(200, 'critical')`.
 
         Returns
         -------
@@ -187,12 +185,12 @@ class Pressure(SchneiderProfiles):
         M_use = np.atleast_1d(M)
 
         z = 1/a - 1
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         r_integral = np.geomspace(1e-6, 1000, 500) #Hardcoded ranges
 
-        rho_total  = self.DarkMatterBaryon.real(cosmo, r_integral, M, a, mass_def = mass_def)
-        rho_gas    = self.Gas.real(cosmo, r_integral, M, a, mass_def = mass_def)
+        rho_total  = self.DarkMatterBaryon.real(cosmo, r_integral, M, a)
+        rho_gas    = self.Gas.real(cosmo, r_integral, M, a)
         
         dlnr    = np.log(r_integral[1]) - np.log(r_integral[0])
         M_total = 4 * np.pi * np.cumsum(r_integral**3 * rho_total * dlnr, axis = -1)
@@ -298,7 +296,7 @@ class NonThermalFrac(SchneiderProfiles):
         super().__init__(**kwargs)
         
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
         
         r_use = np.atleast_1d(r)
@@ -306,7 +304,7 @@ class NonThermalFrac(SchneiderProfiles):
 
         z = 1/a - 1
 
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         f_max = 6**-self.gamma_nt/self.alpha_nt
         f_z   = np.min([(1 + z)**self.nu_nt, (f_max - 1)*np.tanh(self.nu_nt * z) + 1])
@@ -351,7 +349,7 @@ class NonThermalFracGreen20(SchneiderProfiles):
     There are no free parameters in this model; it is completely specified by the halo mass and redshift.
     """
 
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
         
         r_use = np.atleast_1d(r)
@@ -359,11 +357,11 @@ class NonThermalFracGreen20(SchneiderProfiles):
 
         z = 1/a - 1
 
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         
         #They define the model with R200m, so gotta use that redefinition here.
-        M200m = mass_def.translate_mass(cosmo, M_use, a, ccl.halos.massdef.MassDef200m())
+        M200m = self.mass_def.translate_mass(cosmo, M_use, a, ccl.halos.massdef.MassDef200m())
         R200m = ccl.halos.massdef.MassDef200m().get_radius(cosmo, M_use, a)/a #in comoving distance
 
         x = r_use/R200m[:, None]
@@ -406,9 +404,9 @@ class ElectronPressure(Pressure):
     and protons in a system dominated by hydrogen and helium species (hence the use of Y).
 
     """
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
-        prof = Pth_to_Pe * super()._real(cosmo, r, M, a, mass_def)
+        prof = Pth_to_Pe * super()._real(cosmo, r, M, a)
         
         return prof
 
@@ -466,7 +464,7 @@ class GasNumberDensity(SchneiderProfiles):
         super().__init__(**kwargs)
         
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
         
         r_use = np.atleast_1d(r)
@@ -474,10 +472,10 @@ class GasNumberDensity(SchneiderProfiles):
 
         z = 1/a - 1
 
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         rho  = self.Gas
-        rho  = rho.real(cosmo, r_use, M, a, mass_def = mass_def)
+        rho  = rho.real(cosmo, r_use, M, a)
         prof = rho / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
         
         #Handle dimensions so input dimensions are mirrored in the output
@@ -544,17 +542,17 @@ class Temperature(SchneiderProfiles):
         super().__init__(**kwargs)
         
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
         z = 1/a - 1
 
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        P   = self.Pressure.real(cosmo, r_use, M, a, mass_def = mass_def)
-        n   = self.GasNumberDensity.real(cosmo, r_use, M, a, mass_def = mass_def)
+        P   = self.Pressure.real(cosmo, r_use, M, a)
+        n   = self.GasNumberDensity.real(cosmo, r_use, M, a)
         
         prof = P/(n * kb_in_ev)
         
@@ -611,14 +609,14 @@ class ThermalSZ(SchneiderProfiles):
     
     Methods
     -------
-    Pgas_to_Pe(cosmo, r, M, a, mass_def)
+    Pgas_to_Pe(cosmo, r, M, a)
         Returns the conversion factor from gas pressure to electron pressure.
     
-    projected(cosmo, r, M, a, mass_def)
+    projected(cosmo, r, M, a)
         Computes the projected tSZ profile (Compton-y parameter) based on the given 
         cosmology, radii, mass, scale factor, and mass definition.
     
-    real(cosmo, r, M, a, mass_def)
+    real(cosmo, r, M, a)
         This is not to be used, as SZ is a projected quantity. However, the method
         still returns a sentinel value of -99, needed for consistency in other parts
          of the pipeline (eg. Tabulation, see `TabulatedProfile`).
@@ -633,7 +631,7 @@ class ThermalSZ(SchneiderProfiles):
         super().__init__(**kwargs)
         
     
-    def Pgas_to_Pe(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def Pgas_to_Pe(self, cosmo, r, M, a):
         
         """
         Returns the precomputed conversion factor from gas pressure to electron pressure.
@@ -644,19 +642,19 @@ class ThermalSZ(SchneiderProfiles):
         return Pth_to_Pe
     
     
-    def projected(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):        
+    def projected(self, cosmo, r, M, a):        
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
         z     = 1/a - 1
-        R     = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R     = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
         #Now a series of units changes to the projected profile.
-        prof  = self.pressure.projected(cosmo, r_use, M_use, a, mass_def) #generate profile
+        prof  = self.pressure.projected(cosmo, r_use, M_use, a) #generate profile
         prof  = prof * a * (Mpc_to_m * 1e2) #Line-of-sight integral is done in comoving Mpc, we want physical cm
         prof  = prof * sigma_T_cgs/(m_e_cgs*c_cgs**2) #Convert to SZ (dimensionless units)
-        prof  = prof * self.Pgas_to_Pe(cosmo, r_use, M_use, a, mass_def) #Then convert from gas pressure to electron pressure
+        prof  = prof * self.Pgas_to_Pe(cosmo, r_use, M_use, a) #Then convert from gas pressure to electron pressure
         
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -667,12 +665,25 @@ class ThermalSZ(SchneiderProfiles):
         return prof
     
     
-    def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def real(self, cosmo, r, M, a):
         
         #Don't raise ValueError because then we can't pass this object in a TabulatedProfile class
         #Instead just output sentinel value of -99
+
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+        shape = (M_use.size, r_use.size)
+        prof  = np.ones(shape) * -99
+        
+        return prof
     
-        return np.ones_like(r) * -99
+
+    #Have dummy methods because CCL asserts that these must exist.
+    #Hacky because I want to keep SchneiderProfiles as base class
+    #in order to get __init__ to be simple, but then we have to follow
+    #the CCL HaloProfile base class API. 
+    def _real(self): return np.nan
+    def _projected(self): return np.nan
     
     
     
@@ -693,7 +704,7 @@ class XrayLuminosity(ccl.halos.profiles.HaloProfile):
         super().__init__()
         
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
         
         r_use = np.atleast_1d(r)
@@ -701,10 +712,10 @@ class XrayLuminosity(ccl.halos.profiles.HaloProfile):
 
         z = 1/a - 1
 
-        R = mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        T   = self.Temperature.real(cosmo, r_use, M, a, mass_def = mass_def)
-        n   = self.GasNumberDensity.real(cosmo, r_use, M, a, mass_def = mass_def)
+        T   = self.Temperature.real(cosmo, r_use, M, a)
+        n   = self.GasNumberDensity.real(cosmo, r_use, M, a)
         
         prof = n**2*T
         

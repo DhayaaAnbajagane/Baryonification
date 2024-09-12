@@ -55,12 +55,12 @@ def generate_operator_method(op, reflect = False):
                                       padding_hi_proj = self.padding_hi_proj, 
                                       n_per_decade_proj = self.n_per_decade_proj,)
 
-            def __tmp_real__(cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+            def __tmp_real__(cosmo, r, M, a):
 
-                A = self._real(cosmo, r, M, a, mass_def)
+                A = self._real(cosmo, r, M, a)
 
                 if isinstance(other, ccl.halos.profiles.HaloProfile):
-                    B = other._real(cosmo, r, M, a, mass_def)
+                    B = other._real(cosmo, r, M, a)
                 else:
                     B = other
 
@@ -106,9 +106,9 @@ def generate_operator_method(op, reflect = False):
                                       padding_hi_proj = self.padding_hi_proj, 
                                       n_per_decade_proj = self.n_per_decade_proj)
 
-            def __tmp_real__(cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+            def __tmp_real__(cosmo, r, M, a):
 
-                A = self._real(cosmo, r, M, a, mass_def)
+                A = self._real(cosmo, r, M, a)
 
                 return op(A)
 

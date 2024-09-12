@@ -121,7 +121,7 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         #Need this to prevent projected profile from artificially cutting off
         self.update_precision_fftlog(padding_lo_fftlog = 1e-4, padding_hi_fftlog = 1e4)
 
-    def _real(self, cosmo, r, M, a, mass_def=None):
+    def _real(self, cosmo, r, M, a):
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
@@ -212,13 +212,13 @@ class BattagliaElectronPressure(BattagliaPressure):
 
     Methods
     -------
-    _real(cosmo, r, M, a, mass_def)
+    _real(cosmo, r, M, a)
         Computes the electron pressure profile using the scaled gas pressure.
     """
     
-    def _real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def _real(self, cosmo, r, M, a):
         
-        prof = Pth_to_Pe * super()._real(cosmo, r, M, a, mass_def)
+        prof = Pth_to_Pe * super()._real(cosmo, r, M, a)
         
         return prof
     
@@ -268,7 +268,7 @@ class BattagliaGasDensity(ccl.halos.profiles.HaloProfile):
         self.update_precision_fftlog(padding_lo_fftlog = 1e-4, padding_hi_fftlog = 1e4)
 
 
-    def _real(self, cosmo, r, M, a, mass_def=None):
+    def _real(self, cosmo, r, M, a):
 
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)

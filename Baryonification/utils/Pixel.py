@@ -41,10 +41,10 @@ class ConvolvedProfile(object):
 
     Methods
     -------
-    real(cosmo, r, M, a, mass_def=ccl.halos.massdef.MassDef(200, 'critical'))
+    real(cosmo, r, M, a)
         Computes the real-space profile convolved with the pixel window function.
     
-    projected(cosmo, r, M, a, mass_def=ccl.halos.massdef.MassDef(200, 'critical'))
+    projected(cosmo, r, M, a)
         Computes the projected-space profile convolved with the pixel window function, accounting for harmonic space if applicable.
 
     Examples
@@ -103,7 +103,7 @@ class ConvolvedProfile(object):
     def __setstate__(self, state): self.__dict__.update(state)
     
     
-    def real(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def real(self, cosmo, r, M, a):
         """
         Computes the real-space profile convolved with the pixel window function.
 
@@ -125,9 +125,6 @@ class ConvolvedProfile(object):
         a : float
             The scale factor at which to compute the profile.
         
-        mass_def : object, optional
-            A `ccl.halos.massdef.MassDef` object that defines the mass definition. Default is `MassDef(200, 'critical')`.
-
         Returns
         -------
         prof : ndarray
@@ -143,7 +140,7 @@ class ConvolvedProfile(object):
         
         #Generate the real-space profile, sampled at the points defined above.
         r_fft = np.geomspace(r_min, r_max, n)
-        prof  = self.Profile.real(cosmo, r_fft, M, a, mass_def)
+        prof  = self.Profile.real(cosmo, r_fft, M, a)
         
         #Now convert it to fourier space, apply the window function, and transform back
         k_out, Pk   = fftlog(r_fft, prof, 3, 0, self.fft_par['plaw_fourier'])
@@ -160,7 +157,7 @@ class ConvolvedProfile(object):
         return prof
     
     
-    def projected(self, cosmo, r, M, a, mass_def = ccl.halos.massdef.MassDef(200, 'critical')):
+    def projected(self, cosmo, r, M, a):
         """
         Computes the projected-space profile convolved with the pixel window function.
 
@@ -181,9 +178,6 @@ class ConvolvedProfile(object):
         a : float
             The scale factor at which to compute the profile.
         
-        mass_def : object, optional
-            A `ccl.halos.massdef.MassDef` object that defines the mass definition. Default is `MassDef(200, 'critical')`.
-
         Returns
         -------
         prof : ndarray
@@ -205,7 +199,7 @@ class ConvolvedProfile(object):
         
         #Generate the real-space profile, sampled at the points defined above.
         r_fft = np.geomspace(r_min, r_max, n)
-        prof  = self.Profile.projected(cosmo, r_fft, M, a, mass_def)
+        prof  = self.Profile.projected(cosmo, r_fft, M, a)
         
         #If we want harmonic space, then r_fft shouldn't be a distance, but an angle.
         if self.isHarmonic: r_fft = r_fft / D_A

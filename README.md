@@ -27,7 +27,7 @@ A detailed documentation is available at [readthedocs](https://baryonification.r
 
 ## Environment
 
-The ```Baryonification``` is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to create an environment that contains all necessary packages prior to your installation.
+The ```Baryonification``` is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to create an environment that contains all necessary packages prior to your installation. We only specify two hard requirements, which is ```pyccl==2.8``` and ```numpy==1.*```, to avoid API-breaking changes.
 
 
 ## Installation
@@ -95,7 +95,7 @@ Runner  = bfn.Runners.PaintProfilesShell(Catalog, Shell, model = PRESS, epsilon_
 New_map = Runner.process()
 ```
 
-See the ```/examples``` folder for more notebooks demonstrating how to use the code for different applications.
+See the ```/examples``` folder for more notebooks demonstrating how to use the code for different applications. Some examples also download simulations from the [Ulagam Simulation Suite](https://arxiv.org/abs/2310.02349).
 
 ## Attribution
 

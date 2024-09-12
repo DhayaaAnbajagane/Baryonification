@@ -105,7 +105,7 @@ class BaryonificationClass(object):
         self.mass_def    = mass_def
 
 
-    def get_masses(self, model, r, M, a, mass_def):
+    def get_masses(self, model, r, M, a):
         """
         Abstract method for calculating mass profiles.
 
@@ -123,8 +123,6 @@ class BaryonificationClass(object):
             Halo mass or array of halo masses, in solar masses.
         a : float
             Scale factor, related to redshift by `a = 1 / (1 + z)`.
-        mass_def : object
-            Mass definition object from CCL.
 
         Raises
         ------
@@ -208,8 +206,8 @@ class BaryonificationClass(object):
                         _set_parameter(self.DMB, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                     
                     
-                    M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
-                    M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]), mass_def = self.mass_def)
+                    M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]))
+                    M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]))
                     
                     for i in range(M_range.size):
                         ln_DMB    = np.log(M_DMB[i])
@@ -431,11 +429,11 @@ class Baryonification3D(BaryonificationClass):
     -------
     displacement(r, M, a, **kwargs)
         Compute the displacement function for a given mass, radii, and scale factor
-    get_masses(model, r, M, a, mass_def)
+    get_masses(model, r, M, a)
         Computes the enclosed mass profile for a given model, radii, halo mass, and scale factor.
     """
 
-    def get_masses(self, model, r, M, a, mass_def):
+    def get_masses(self, model, r, M, a):
         """
         Computes the enclosed mass profile for a given model.
 
@@ -453,8 +451,6 @@ class Baryonification3D(BaryonificationClass):
             Halo mass or array of halo masses, in solar masses.
         a : float
             Scale factor, related to redshift by `a = 1 / (1 + z)`.
-        mass_def : object
-            Mass definition object from CCL, specifying the overdensity criterion.
 
         Returns
         -------
@@ -486,7 +482,7 @@ class Baryonification3D(BaryonificationClass):
         >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
         >>> M = 1e14  # Halo mass in solar masses
         >>> a = 0.8  # Scale factor corresponding to redshift z
-        >>> mass_profile = baryon_model.get_masses(baryon_model.DMO, r, M, a, mass_def)
+        >>> mass_profile = baryon_model.get_masses(baryon_model.DMO, r, M, a)
         """
         
         #Make sure the min/max does not mess up the integral
@@ -496,7 +492,7 @@ class Baryonification3D(BaryonificationClass):
         r_int = np.geomspace(r_min/1.2, r_max*1.2, 500)
         
         dlnr  = np.log(r_int[1]/r_int[0])
-        rho   = model.real(self.cosmo, r_int, M, a, mass_def = mass_def)
+        rho   = model.real(self.cosmo, r_int, M, a)
         rho   = np.where(rho < 0, 0, rho) #Enforce non-zero densities
         
         if isinstance(M, (float, int) ): rho = rho[None, :]
@@ -552,7 +548,7 @@ class Baryonification2D(BaryonificationClass):
 
     """
 
-    def get_masses(self, model, r, M, a, mass_def):
+    def get_masses(self, model, r, M, a):
         """
         Computes the enclosed mass profile for a given model using 2D projection.
 
@@ -570,8 +566,6 @@ class Baryonification2D(BaryonificationClass):
             Halo mass or array of halo masses, in solar masses.
         a : float
             Scale factor, related to redshift by `a = 1 / (1 + z)`.
-        mass_def : object
-            Mass definition object from CCL, specifying the overdensity criterion.
 
         Returns
         -------
@@ -603,7 +597,7 @@ class Baryonification2D(BaryonificationClass):
         >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
         >>> M = 1e14  # Halo mass in solar masses
         >>> a = 0.5  # Scale factor corresponding to redshift z
-        >>> mass_profile = baryon_model.get_masses(baryon_model.DMO, r, M, a, mass_def)
+        >>> mass_profile = baryon_model.get_masses(baryon_model.DMO, r, M, a)
         """
         
         #Make sure the min/max does not mess up the integral
@@ -615,7 +609,7 @@ class Baryonification2D(BaryonificationClass):
         #The scale fac. is used in Sigma cause the projection in ccl is
         #done in comoving coords not physical coords
         dlnr  = np.log(r_int[1]/r_int[0])
-        Sigma = model.projected(self.cosmo, r_int, M, a, mass_def = mass_def) * a 
+        Sigma = model.projected(self.cosmo, r_int, M, a) * a 
         Sigma = np.where(Sigma < 0, 0, Sigma) #Enforce non-zero densities
         
         if isinstance(M, (float, int) ): Sigma = Sigma[None, :]
