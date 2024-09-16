@@ -3,6 +3,7 @@ import numpy as np
 
 __all__ = ['SimpleParallel', 'SplitJoinParallel']
 
+from ..Runners import BaryonifyShell, BaryonifyGrid, BaryonifySnapshot
 
 class SimpleParallel(object):
     """
@@ -121,6 +122,9 @@ class SplitJoinParallel(object):
     all parallel tasks are completed. This approach is particularly useful for handling large datasets or 
     computationally intensive tasks by distributing the workload across multiple CPU cores.
 
+    This class is currently not designed to work with the Baryonification operation and will raise an 
+    error if it is passed any Baryonification runner.
+    
     Parameters
     ----------
     Runner : object
@@ -199,6 +203,11 @@ class SplitJoinParallel(object):
             of CPUs available. Default is -1.
         """
         
+        #The SplitJoin runner only works when the final output can be linearly summed across different batches of halos.
+        #A painting operation is an ideal use case, while Baryonification is not, so do an explicit check here.
+        text = f"Runner of type {type(Runner)} is not supported for SplitJoinParallel."
+        assert not isinstance(Runner, (BaryonifyGrid, BaryonifyShell, BaryonifySnapshot)), text
+
         self.Runner = Runner
         self.seed   = seed
         self.njobs  = njobs if njobs != -1 else joblib.externals.loky.cpu_count()
