@@ -6,8 +6,8 @@ channels:
   - defaults
 
 dependencies:
-  - pyccl==2.*
-  - numpy
+  - pyccl==2.8.0
+  - numpy==1.*
   - scipy
   - joblib
   - tqdm
