@@ -38,7 +38,7 @@ Pressure_at_infinity = 0
 
 
 __all__ = ['Pressure', 'NonThermalFrac', 'NonThermalFracGreen20',
-           'Temperature', 'ThermalSZ']
+           'Temperature', 'ThermalSZ', 'ElectronPressure']
 
 
 class Pressure(SchneiderProfiles):
