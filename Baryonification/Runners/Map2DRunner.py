@@ -221,7 +221,7 @@ class DefaultRunnerGrid(object):
         If attempting to use the 3D ellipticity method, which is not yet verified.
     """
     
-    def __init__(self, HaloNDCatalog, GriddedMap, epsilon_max, model = None, use_ellipticity = False,
+    def __init__(self, HaloNDCatalog, GriddedMap, epsilon_max, model, use_ellipticity = False,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloNDCatalog = HaloNDCatalog

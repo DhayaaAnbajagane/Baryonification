@@ -26,6 +26,10 @@ class DefaultRunnerSnapshot(object):
         An instance representing a `ParticleSnapshot` containing the positions of particles
         in the simulation.
     
+    epsilon_max : float
+        A parameter specifying the maximum size, in units of halo radius, of cutouts made around
+        each halo during painting/baryonification.
+    
     model : object, optional
         An object that generates profiles or displacements. For example, see `Baryonification2D` or `Pressure`
     
@@ -49,6 +53,9 @@ class DefaultRunnerSnapshot(object):
     
     model : object
         The model used for baryonification or profile painting.
+
+    epsilon_max : float
+        The maximum radius, in halo radius units, of cutouts around halos.
     
     mass_def : object
         The mass definition object.
@@ -70,11 +77,12 @@ class DefaultRunnerSnapshot(object):
         ensuring distances are within the box size.
     """
     
-    def __init__(self, HaloNDCatalog, ParticleSnapshot, model,
+    def __init__(self, HaloNDCatalog, ParticleSnapshot, epsilon_max, model,
                  mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
 
         self.HaloNDCatalog    = HaloNDCatalog
         self.ParticleSnapshot = ParticleSnapshot
+        self.epsilon_max      = epsilon_max
         self.cosmo = HaloNDCatalog.cosmology
         self.model = model
         
