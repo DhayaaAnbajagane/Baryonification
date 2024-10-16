@@ -260,6 +260,4 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
             new_cat[i]  = np.where(new_cat[i] > L, new_cat[i] - L, new_cat[i])
             new_cat[i]  = np.where(new_cat[i] < 0, new_cat[i] + L, new_cat[i])
 
-        self.output(new_cat)
-
         return new_cat
