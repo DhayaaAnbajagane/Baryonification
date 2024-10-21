@@ -52,8 +52,19 @@ def regrid_pixels_2D(grid, pix_positions, pix_values):
         x_start, y_start = x_start % N, y_start % N #To handle edge-case where offset >> Lbox_sim
         x_end, y_end     = x_start + 1, y_start + 1
 
-        for i in range(N):
-            for j in range(N):
+        bound = 2
+        
+        x_min, x_max = int(x_start) - bound, int(x_end) + bound
+        y_min, y_max = int(y_start) - bound, int(y_end) + bound
+        
+        for i in range(y_min, y_max):
+            for j in range(x_min, x_max):
+
+                if i < 0: i += N
+                if i + 1 > N: i = i % N
+
+                if j < 0: j += N
+                if j + 1 > N: j = j % N
 
                 #Find intersection length
                 dx = min(j + 1, x_end) - max(j, x_start)
@@ -112,16 +123,31 @@ def regrid_pixels_3D(grid, pix_positions, pix_values):
         x_start, y_start, z_start = x_start % N, y_start % N, z_start % N #To handle edge-case where offset >> Lbox_sim
         x_end, y_end, z_end       = x_start + 1, y_start + 1, z_start + 1
 
-        for i in range(N):
-            for j in range(N):
-                for k in range(N):
+        bound = 2
+        
+        x_min, x_max = int(x_start) - bound, int(x_end) + bound
+        y_min, y_max = int(y_start) - bound, int(y_end) + bound
+        z_min, z_max = int(z_start) - bound, int(z_end) + bound
 
+        for i in range(y_min, y_max):
+            for j in range(x_min, x_max):
+                for k in range(z_min, z_max):
+                    
+                    if i < 0: i += N
+                    if i + 1 > N: i = i % N
+
+                    if j < 0: j += N
+                    if j + 1 > N: j = j % N
+
+                    if k < 0: k += N
+                    if k + 1 > N: k = k % N
+                    
                     #Find intersection length
                     dx = min(j + 1, x_end) - max(j, x_start)
                     dy = min(i + 1, y_end) - max(i, y_start)
                     dz = min(k + 1, z_end) - max(k, z_start)
 
-                    #Now account for periodic boundary conditions
+
                     if dx < 0: dx = min(j + 1, x_end + N) - max(j, x_start + N)
                     if dx < 0: dx = min(j + 1, x_end - N) - max(j, x_start - N)
 
@@ -131,7 +157,7 @@ def regrid_pixels_3D(grid, pix_positions, pix_values):
                     if dz < 0: dz = min(k + 1, z_end + N) - max(k, z_start + N)
                     if dz < 0: dz = min(k + 1, z_end - N) - max(k, z_start - N)
 
-                    #If there is some intersection, then add
+
                     if (dx > 0) & (dy > 0) & (dz > 0):
                         overlap_vol = dx * dy * dz
                         grid[i, j, k] += overlap_vol * pix_value
@@ -504,6 +530,7 @@ class BaryonifyGrid(DefaultRunnerGrid):
                     r_grid = np.sqrt(x_grid_ell**2 + y_grid_ell**2).reshape(x_grid_ell.shape)
 
                 #Compute the (comoving) displacement needed and add it to pixel offsets
+                #The 1/res makes sure the offset is in units of pixel widths
                 offset = self.model.displacement(r_grid.flatten(), M_j, a_j, **o_j) / res
                 pix_offsets[inds, 0] += offset * x_hat.flatten()
                 pix_offsets[inds, 1] += offset * y_hat.flatten()
@@ -545,7 +572,8 @@ class BaryonifyGrid(DefaultRunnerGrid):
                                      z_grid_ell**2/cr_j**2).reshape(x_grid_ell.shape)
 
                 
-                #Compute the (comoving) displacement needed    
+                #Compute the (comoving) displacement needed   
+                #The 1/res makes sure the offset is in units of pixel widths 
                 offset = self.model.displacement(r_grid.flatten(), M_j, a_j, **o_j) / res
                 pix_offsets[inds, 0] += offset * x_hat.flatten()
                 pix_offsets[inds, 1] += offset * y_hat.flatten()

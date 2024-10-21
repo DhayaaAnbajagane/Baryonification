@@ -268,7 +268,7 @@ class HaloNDCatalog(object):
             if k not in ['x', 'y', 'z', 'M']:
                 other[k] = self.cat[k][key]
         
-        return HaloNDCatalog(x = x, y = y, z = z, N = M, redshift = self.redshift, cosmo = self.cosmo, **other)
+        return HaloNDCatalog(x = x, y = y, z = z, M = M, redshift = self.redshift, cosmo = self.cosmo, **other)
     
     
     def __str__(self):
