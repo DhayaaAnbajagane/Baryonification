@@ -78,7 +78,7 @@ class DefaultRunnerSnapshot(object):
     """
     
     def __init__(self, HaloNDCatalog, ParticleSnapshot, epsilon_max, model,
-                 mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True):
+                 mass_def = ccl.halos.massdef.MassDef(200, 'critical'), verbose = True, KDTree_kwargs = {}):
 
         self.HaloNDCatalog    = HaloNDCatalog
         self.ParticleSnapshot = ParticleSnapshot
@@ -94,7 +94,7 @@ class DefaultRunnerSnapshot(object):
         else:
             coords = np.vstack([ParticleSnapshot.cat['x'], ParticleSnapshot.cat['y'], ParticleSnapshot.cat['z']]).T
                                
-        self.tree = KDTree(coords, boxsize = ParticleSnapshot.L)
+        self.tree = KDTree(coords, boxsize = ParticleSnapshot.L, **KDTree_kwargs)
 
                 
     def compute_distance(self, *args):
@@ -148,7 +148,6 @@ class DefaultRunnerSnapshot(object):
         """
         
         L = self.ParticleSnapshot.L
-        d = 0
         
         dx = np.where(dx > L/2,  dx - L, dx)
         dx = np.where(dx < -L/2, dx + L, dx)
@@ -222,8 +221,8 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
                 dy   = self.ParticleSnapshot.cat['y'][inds] - y_j
                 d    = self.compute_distance(dx, dy)
 
-                x_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['x'][inds] - x_j)/d
-                y_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['y'][inds] - y_j)/d
+                x_hat = self.enforce_periodicity(dx)/d
+                y_hat = self.enforce_periodicity(dy)/d
 
                 #Compute the displacement needed
                 offset = self.model.displacement(d, M_j, a_j) * a_j
@@ -235,12 +234,12 @@ class BaryonifySnapshot(DefaultRunnerSnapshot):
                 inds = self.tree.query_ball_point([x_j, y_j, z_j], R_q)
                 dx   = self.ParticleSnapshot.cat['x'][inds] - x_j
                 dy   = self.ParticleSnapshot.cat['y'][inds] - y_j
-                dz   = self.ParticleSnapshot.cat['z'][inds] - y_j
-                d    = self.compute_distance(dx, dy)
+                dz   = self.ParticleSnapshot.cat['z'][inds] - z_j
+                d    = self.compute_distance(dx, dy, dz)
 
-                x_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['x'][inds] - x_j)/d
-                y_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['y'][inds] - y_j)/d
-                z_hat = self.enforce_periodicity(self.ParticleSnapshot.cat['z'][inds] - z_j)/d
+                x_hat = self.enforce_periodicity(dx)/d
+                y_hat = self.enforce_periodicity(dy)/d
+                z_hat = self.enforce_periodicity(dz)/d
 
                 #Compute the displacement needed
                 offset = self.model.displacement(d, M_j, a_j) * a_j
