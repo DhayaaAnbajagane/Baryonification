@@ -23,7 +23,7 @@ A pipeline for *Baryonifying* N-body simulations, by adding baryon-induced corre
 - **Parallelized**: Painting and baryonification is parallelized under joblib.
 
 
-A detailed documentation is available at [readthedocs](https://baryonification.readthedocs.io/en/latest).
+A detailed documentation is available at [readthedocs](https://baryonforge.readthedocs.io/en/latest).
 
 ## Environment
 
