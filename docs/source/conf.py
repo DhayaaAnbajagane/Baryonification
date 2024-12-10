@@ -10,7 +10,7 @@ def run_apidoc(_):
     import sys
     import subprocess
 
-    subprocess.check_call(['cp', '-r', '../../../latest', '../../../Baryonification'])
+    subprocess.check_call(['cp', '-r', '../../../latest', '../../../BaryonForge'])
     
     cmd_path = 'sphinx-apidoc'
     if hasattr(sys, 'real_prefix'):  # Check to see if we are in a virtualenv
@@ -19,11 +19,11 @@ def run_apidoc(_):
     
     for module in ['Profiles', 'Runners', 'utils']:
         subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
-                            '-e', '-o', '../../docs/source', '../../../Baryonification/Baryonification/' + module, 
-                            '../../../Baryonification/*setup*'])
+                            '-e', '-o', '../../docs/source', '../../../BaryonForge/BaryonForge/' + module, 
+                            '../../../BaryonForge/*setup*'])
         
     subprocess.check_call([cmd_path, '--force', '--ext-autodoc', '--ext-intersphinx', 
-                        '-e', '-o', '../../docs/source', '../../../Baryonification/Baryonification/', '../../../Baryonification/*setup*'])
+                        '-e', '-o', '../../docs/source', '../../../BaryonForge/BaryonForge/', '../../../BaryonForge/*setup*'])
 
 
 def setup(app):
@@ -31,12 +31,12 @@ def setup(app):
 
 # -- Project information
 
-project = 'Baryonification'
+project = 'BaryonForge'
 copyright = '2024, Anbajagane'
 author = 'Dhayaa Anbajagane'
 
-release = '0.1'
-version = '0.1.0'
+release = '1.0'
+version = '1.0.0'
 
 # -- General configuration
 

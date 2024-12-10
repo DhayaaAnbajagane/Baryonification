@@ -445,3 +445,102 @@ class PaintProfilesShell(DefaultRunner):
             new_map[pixind] += Paint         
 
         return new_map
+    
+
+
+class PaintProfilesAnisShell(DefaultRunner):
+
+    """
+    A class to apply profile painting to a lightcone shell using a halo catalog.
+
+    The `PaintProfilesShell` class inherits from `DefaultRunner` and is designed to process a lightcone shell
+    by painting profiles to the map based on a given model and halo properties.
+
+    Methods
+    -------
+    process()
+        Processes the lightcone shell by painting baryonic profiles and returns the modified HEALPix map.
+    """
+
+    def process(self):
+        """
+        Applies profile painting to the lightcone shell using the halo catalog.
+
+        This method iterates over each halo in the `HaloLightConeCatalog`, calculating the profile
+        contributions based on the halo's mass, redshift, and position. It uses the provided model to
+        compute the profile and updates the HEALPix map accordingly.
+
+        Returns
+        -------
+        new_map : ndarray
+            A 1D numpy array representing the modified HEALPix map after painting the baryonic profiles.
+
+        Raises
+        ------
+        AssertionError
+            If a model is not provided or if the provided model is not an instance of `ParamTabulatedProfile`
+            when property keys are used.
+
+        Notes
+        -----
+        - This method assumes flat cosmologies for distance calculations.
+        - The `ParamTabulatedProfile` model is required if property keys are used in the model.
+        - Non-finite profile values are set to zero before adding profiles to the map.
+        """
+
+        cosmo = ccl.Cosmology(Omega_c = self.cosmo['Omega_m'] - self.cosmo['Omega_b'],
+                              Omega_b = self.cosmo['Omega_b'], h   = self.cosmo['h'],
+                              sigma8  = self.cosmo['sigma8'],  n_s = self.cosmo['n_s'],
+                              w0      = self.cosmo['w0'],
+                              matter_power_spectrum = 'linear')
+        cosmo.compute_sigma()
+
+        orig_map = self.LightconeShell.map
+        new_map  = np.zeros_like(orig_map).astype(np.float64)
+        NSIDE    = self.LightconeShell.NSIDE
+
+        #Build interpolator between redshift and ang-diam-dist. Assume we never use z > 30
+        z_t = np.linspace(0, 30, 1000)
+        D_a = interpolate.CubicSpline(z_t, ccl.angular_diameter_distance(cosmo, 1/(1 + z_t)))
+        
+        keys = vars(self.model).get('p_keys', []) #Check if model has property keys
+
+        if len(keys) > 0:
+            txt = (f"You asked to use {keys} properties in Baryonification. You must pass a ParamTabulatedProfile"
+                   f"as the model. You have passed {type(self.model)} instead")
+            assert isinstance(self.model, ParamTabulatedProfile), txt
+
+
+        assert self.model is not None, "You must provide a model"
+        Baryons = self.model
+
+        for j in tqdm(range(self.HaloLightConeCatalog.cat.size), desc = 'Painting Profile', disable = not self.verbose):
+
+            M_j = self.HaloLightConeCatalog.cat['M'][j]
+            z_j = self.HaloLightConeCatalog.cat['z'][j]
+            a_j = 1/(1 + z_j)
+            R_j = self.mass_def.get_radius(cosmo, M_j, a_j) #in physical Mpc
+            D_j = D_a(z_j) #also physical Mpc since Ang. Diam. Dist.
+            o_j = {key : self.HaloLightConeCatalog.cat[key][j] for key in keys} #Other properties
+            
+            ra_j   = self.HaloLightConeCatalog.cat['ra'][j]
+            dec_j  = self.HaloLightConeCatalog.cat['dec'][j]
+            vec_j  = hp.ang2vec(ra_j, dec_j, lonlat = True)
+            
+            radius = R_j * self.epsilon_max / D_j
+            pixind = hp.query_disc(self.LightconeShell.NSIDE, vec_j, radius, inclusive = False, nest = False)
+            vec    = np.stack(hp.pix2vec(nside = NSIDE, ipix = pixind), axis = 1)
+            
+            pos_j  = vec_j * D_j #We assume flat cosmologies, where D_a is the right distance to use here
+            pos    = vec   * D_j
+            diff   = pos - pos_j
+            r_sep  = np.sqrt(np.sum(diff**2, axis = 1))
+            
+            #Compute the painted map
+            Paint  = Baryons.projected(cosmo, r_sep/a_j, M_j, a_j, **o_j)
+            Paint  = np.where(np.isfinite(Paint), Paint, 0) #Set non-finite values to 0
+            
+            #Add the profiles to the new healpix map
+            new_map[pixind] += Paint         
+
+        return new_map
