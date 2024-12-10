@@ -1,14 +1,14 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='Baryonification',
-    version='0.1.2',
+    name='BaryonForge',
+    version='1.0.0',
     author='Dhayaa Anbajagane',
     author_email='dhayaa@uchicago.edu',
     description='A pipeline for adding baryonic imprints and thermodynamic maps to N-body simulations',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url='https://github.com/DhayaaAnbajagane/Baryonification',
+    url='https://github.com/DhayaaAnbajagane/BaryonForge',
     packages=find_packages(),  # Automatically find packages in your project
     classifiers=[
         'Programming Language :: Python :: 3',

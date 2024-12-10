@@ -1,12 +1,12 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO_dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO_light.png">
-  <img alt="Logo" src="https://raw.githubusercontent.com/DhayaaAnbajagane/Baryonification/main/docs/source/LOGO_dark.png" title="Logo">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DhayaaAnbajagane/BaryonForge/main/docs/source/LOGO_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DhayaaAnbajagane/BaryonForge/main/docs/source/LOGO_light.png">
+  <img alt="Logo" src="https://raw.githubusercontent.com/DhayaaAnbajagane/BaryonForge/main/docs/source/LOGO_dark.png" title="Logo">
 </picture>
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/downloads/)
-[![Documentation Status](https://img.shields.io/readthedocs/baryonification?color=blue)](https://baryonification.readthedocs.io/en/latest)
+[![Documentation Status](https://img.shields.io/readthedocs/baryonforge?color=blue)](https://baryonforge.readthedocs.io/en/latest)
 
 ## Overview
 
@@ -14,7 +14,7 @@ A pipeline for *Baryonifying* N-body simulations, by adding baryon-induced corre
 
 ## Features
 
-- **Baryonification**: Modify density fields from N-body simulations and/or paint any field that has a halo profile associated with it
+- **Baryonification & Painting**: Modify density fields from N-body simulations and/or paint any field that has a halo profile associated with it
 
 
 - **Maps, grids, and snapshots**: Work directly with 2D fields (eg. HealPix maps or 2D grids) but can also use 3D grids or full particle snapshots
@@ -27,7 +27,7 @@ A detailed documentation is available at [readthedocs](https://baryonification.r
 
 ## Environment
 
-The ```Baryonification``` is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to create an environment that contains all necessary packages prior to your installation. We only specify two hard requirements, which is ```pyccl==2.8``` and ```numpy==1.*```, to avoid API-breaking changes.
+The ```BaryonForge``` pipeline is designed to have minimal dependencies on external packages. The ```environment.yaml``` file can be used to create an environment that contains all necessary packages prior to your installation. We only specify two hard requirements, which is ```pyccl==2.8``` and ```numpy==1.*```, to avoid API-breaking changes.
 
 
 ## Installation
@@ -35,20 +35,20 @@ The ```Baryonification``` is designed to have minimal dependencies on external p
 The package can be installed through PyPi
 
 ```bash
-pip install Baryonification
+pip install BaryonForge
 ```
 
 You can also install directly from source, by running the following command:
 
 ```bash
-pip install git+https://github.com/DhayaaAnbajagane/Baryonification.git
+pip install git+https://github.com/DhayaaAnbajagane/BaryonForge.git
 ```
 
 or alternatively you can download the repo yourself and set it up,
 
 ```bash
-git clone https://github.com/DhayaaAnbajagane/Baryonification.git
-cd Baryonification
+git clone https://github.com/DhayaaAnbajagane/BaryonForge.git
+cd BaryonForge
 pip install -e .
 ```
 
@@ -58,12 +58,12 @@ The latter will keep the source files in the location you git clone'd from, and 
 ## Quickstart
 
 ```python
-import Baryonification as bfn
+import BaryonForge as bfg
 import pyccl as ccl
 
 #Add the healpix map and the lightcone halo catalog into the respective data objects
-Shell   = bfn.utils.LightconeShell(map = HealpixMap, cosmo = cosmo_dict)
-Catalog = bfn.utils.HaloLightConeCatalog(ra = ra, dec = dec, M = M200c, z = z, cdelta = c200c)
+Shell   = bfg.utils.LightconeShell(map = HealpixMap, cosmo = cosmo_dict)
+Catalog = bfg.utils.HaloLightConeCatalog(ra = ra, dec = dec, M = M200c, z = z, cdelta = c200c)
 
 #Define a cosmology object, to be used in all profile calculations
 cosmo   = ccl.Cosmology(Omega_c = 0.26, h = 0.7, Omega_b = 0.04, sigma8 = 0.8, n_s = 0.96)
@@ -72,26 +72,26 @@ cosmo   = ccl.Cosmology(Omega_c = 0.26, h = 0.7, Omega_b = 0.04, sigma8 = 0.8, n
 #The model params can be specified during initialization of the class.
 #The Baryonification 2D class generates the offsets of density field.
 #We setup an interpolator to speed up the calculations.
-DMO     = bfn.Profiles.DarkMatterOnly(M_c = 1e14, proj_cutoff = 100)
-DMB     = bfn.Profiles.DarkMatterBaryon(M_c = 1e14, proj_cutoff = 100)
-model   = bfn.Profiles.Baryonification2D(DMO, DMB, cosmo)
+DMO     = bfg.Profiles.DarkMatterOnly(M_c = 1e14, proj_cutoff = 100)
+DMB     = bfg.Profiles.DarkMatterBaryon(M_c = 1e14, proj_cutoff = 100)
+model   = bfg.Profiles.Baryonification2D(DMO, DMB, cosmo)
 model.setup_interpolator(z_min = Catalog.cat['z'].min(), z_max = Catalog.cat['z'].max(), N_samples_z = 10,
                          M_min = Catalog.cat['M'].min(), M_max = Catalog.cat['M'].max(), N_samples_M = 10,
                          R_min = 1e-3, R_max = 3e2, N_samples_R = 500,)
 
 #The halo pressure profile as well. This is convolved with a Healpix window function
 #and then tabulated for speedup
-PRESS   = bfn.Profiles.Pressure(theta_ej = 8, theta_co = 0.1, mu_theta_ej = 0.1)
-Pixel   = bfn.utils.HealPixel(NSIDE = 1024)
-PRESS   = bfn.utils.ConvolvedProfile(PRESS, Pixel)
-PRESS   = bfn.utils.TabulatedProfile(PRESS, cosmo)
+PRESS   = bfg.Profiles.Pressure(theta_ej = 8, theta_co = 0.1, mu_theta_ej = 0.1)
+Pixel   = bfg.utils.HealPixel(NSIDE = 1024)
+PRESS   = bfg.utils.ConvolvedProfile(PRESS, Pixel)
+PRESS   = bfg.utils.TabulatedProfile(PRESS, cosmo)
 
 #Run the baryonification on this one shell
-Runner  = bfn.Runners.BaryonifyShell(Catalog, Shell, model = model, epsilon_max = 20)
+Runner  = bfg.Runners.BaryonifyShell(Catalog, Shell, model = model, epsilon_max = 20)
 New_map = Runner.process()
 
 #Run the profile painting on this one shell
-Runner  = bfn.Runners.PaintProfilesShell(Catalog, Shell, model = PRESS, epsilon_max = 20)
+Runner  = bfg.Runners.PaintProfilesShell(Catalog, Shell, model = PRESS, epsilon_max = 20)
 New_map = Runner.process()
 ```
 
