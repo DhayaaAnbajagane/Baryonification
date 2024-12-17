@@ -11,7 +11,8 @@ Msun_to_Kg = ccl.physical_constants.SOLAR_MASS
 Mpc_to_m   = ccl.physical_constants.MPC_TO_METER
 G          = ccl.physical_constants.GNEWT / Mpc_to_m**3 * Msun_to_Kg
 m_to_cm    = 1e2
-kb_in_ev   = ccl.physical_constants.KBOLTZ / ccl.physical_constants.EV_IN_J
+kb_cgs     = ccl.physical_constants.KBOLTZ * 1e7 
+K_to_kev   = ccl.physical_constants.KBOLTZ / ccl.physical_constants.EV_IN_J * 1e-3
 
 #Just define some useful conversions/constants
 sigma_T = 6.652458e-29 / Mpc_to_m**2
@@ -455,14 +456,12 @@ class GasNumberDensity(SchneiderProfiles):
         - The result is converted to the proper units (number per cubic centimeter).
     """
     
-    def __init__(self, gas = None, mean_molecular_weight = 1.15, **kwargs):
+    def __init__(self, gas = None, **kwargs):
         
         self.Gas = gas
         if self.Gas is None: self.Gas = Gas(**kwargs)
         
-        self.mean_molecular_weight = mean_molecular_weight
         super().__init__(**kwargs)
-        
     
     def _real(self, cosmo, r, M, a):
         
@@ -544,17 +543,16 @@ class Temperature(SchneiderProfiles):
     
     def _real(self, cosmo, r, M, a):
         
-        r_use = np.atleast_1d(r)
-        M_use = np.atleast_1d(M)
-
-        z = 1/a - 1
-
-        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
-        P   = self.Pressure.real(cosmo, r_use, M, a)
-        n   = self.GasNumberDensity.real(cosmo, r_use, M, a)
+        P   = self.Pressure.real(cosmo, r, M, a)
+        n   = self.GasNumberDensity.real(cosmo, r, M, a)
         
-        prof = P/(n * kb_in_ev)
+        #We'll have instances of n == 0, which isn't a problem so let's ignore
+        #warnings of divide errors, because we know they happen here.
+        #Instead we will fix them by replacing the temperature with 0s,
+        #since there is no gas in those regions to use anyway.
+        with np.errstate(divide = 'ignore', invalid = 'ignore'):
+            prof = P/(n * kb_cgs)
+            prof = np.where(n == 0, 0, prof)
         
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0:
@@ -563,6 +561,33 @@ class Temperature(SchneiderProfiles):
             prof = np.squeeze(prof, axis=0)
 
         assert np.all(prof >= 0), "Something went wrong. Temperature is negative in some places"
+
+        return prof
+    
+    
+    def projected(self, cosmo, r, M, a):
+        """
+        Need a custom projected class, because we want the "average temperature"
+        along the line of sight. The "integrated temperature" is not a meaningful
+        physical quantity.
+        """
+
+        P   = self.Pressure.projected(cosmo, r, M, a)
+        n   = self.GasNumberDensity.projected(cosmo, r, M, a)
+
+        #We'll have instances of n == 0, which isn't a problem so let's ignore
+        #warnings of divide errors, because we know they happen here.
+        #Instead we will fix them by replacing the temperature with 0s,
+        #since there is no gas in those regions to use anyway.
+        with np.errstate(divide = 'ignore', invalid = 'ignore'):
+            prof = P/(n * kb_cgs)
+            prof = np.where(n == 0, 0, prof)
+
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0:
+            prof = np.squeeze(prof, axis=0)
 
         return prof
     
