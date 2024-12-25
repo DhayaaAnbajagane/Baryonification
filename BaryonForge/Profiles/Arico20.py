@@ -71,6 +71,24 @@ class AricoProfiles(S19.SchneiderProfiles):
     #Define the new param names
     model_param_names      = model_params
     projection_param_names = projection_params
+
+    def __init__(self, **kwargs):
+        
+        super().__init__(**kwargs)
+        
+        #Go through all input params, and assign Nones to ones that don't exist.
+        #If mass/redshift/conc-dependence, then set to 1 if don't exist
+        for m in self.model_param_names + self.projection_param_names:
+            if m in kwargs.keys():
+                setattr(self, m, kwargs[m])
+            else:
+                setattr(self, m, None)
+
+        #Sets the cutoff scale of all profiles, in comoving Mpc. Prevents divergence in FFTLog
+        #Also set cutoff of projection integral. Should be the box side length
+        self.cutoff      = kwargs['cutoff'] if 'cutoff' in kwargs.keys() else 1e3 #1Gpc is a safe default choice
+        self.proj_cutoff = kwargs['proj_cutoff'] if 'proj_cutoff' in kwargs.keys() else self.cutoff
+                
     
     def _get_gas_params(self, M, z):
         """
