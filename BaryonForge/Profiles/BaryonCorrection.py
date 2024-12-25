@@ -205,7 +205,6 @@ class BaryonificationClass(object):
                         _set_parameter(self.DMO, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                         _set_parameter(self.DMB, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                     
-                    
                     M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]))
                     M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]))
                     
@@ -213,9 +212,12 @@ class BaryonificationClass(object):
                         ln_DMB    = np.log(M_DMB[i])
                         ln_DMO    = np.log(M_DMO[i])
                         
-                        #Require mass to always increase w/ radius
-                        #And remove pts of DMO = DMB, improves large-scale convergence
-                        #And require at least 1e-6 difference else the interpolator breaks :/
+
+                        #Require mass to always increase w/ radius, using iterative conditions
+                        #And remove pts of DMO = DMB, improves large-scale convergence (while making
+                        #sure it does not fail just because DMO is NaN values, which happens in some profs)
+                        #And also require at least 1e-6 difference in DMB else the interpolator breaks :/
+                        #We will handle DMO mask later separately
                         
                         min_diff  = -np.inf
                         diff_mask = np.ones_like(ln_DMB).astype(bool)
@@ -223,8 +225,8 @@ class BaryonificationClass(object):
                         while (min_diff < 1e-5) & (diff_mask.sum() > 5):
                             
                             new_mask  = ( (np.diff(ln_DMB[diff_mask], prepend = 0) > 1e-5) & 
-                                          (np.diff(ln_DMO[diff_mask], prepend = 0) > 1e-5) & 
-                                          (np.abs(ln_DMB - ln_DMO)[diff_mask] > 1e-6) 
+                                          ((np.abs(ln_DMB - ln_DMO)[diff_mask] > 1e-6) | np.isnan(ln_DMO)[diff_mask]) & 
+                                          np.isfinite(ln_DMB)[diff_mask]
                                         )
                             
                             diff_mask[diff_mask] = new_mask
@@ -247,21 +249,25 @@ class BaryonificationClass(object):
                                 warnings.warn(warn_text, UserWarning)
                                 break
                             
-                            min_diff  = np.min([np.min(np.diff(ln_DMB[diff_mask], prepend = 0)[1:]),
-                                                np.min(np.diff(ln_DMO[diff_mask], prepend = 0)[1:])
-                                               ])                                                          
+                            min_diff  = np.min(np.diff(ln_DMB[diff_mask], prepend = 0)[1:])                                                       
                             
                         #If we have enough usable mass values, then proceed as usual
                         #This generally breaks for very small halos, where projection
                         #can be catastrophicall broken (eg. only negative densities)
                         if diff_mask.sum() > 5:
-                                   
+                                
+                            #Same mask as DMB but for DMO. No need for iterations, since
+                            #the x-axis in interpolator is still radius, so the requirements are more lax.
+                            fini_mask  = ( (np.diff(ln_DMO, prepend = 0) > 1e-5) & 
+                                           ((np.abs(ln_DMB - ln_DMO) > 1e-6) | np.isnan(ln_DMB))& 
+                                           np.isfinite(ln_DMO)
+                                        )
                             interp_DMB = interpolate.PchipInterpolator(ln_DMB[diff_mask], np.log(r)[diff_mask], extrapolate = False)
-                            interp_DMO = interpolate.PchipInterpolator(np.log(r)[diff_mask], ln_DMO[diff_mask], extrapolate = False)
+                            interp_DMO = interpolate.PchipInterpolator(np.log(r)[fini_mask], ln_DMO[fini_mask], extrapolate = False)
 
                             offset = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
                             offset = np.where(np.isfinite(offset), offset, 0)
-                        
+
                         #If broken, then these halos contribute nothing to the displacement function.
                         #Just provide a warning saying this is happening
                         else:
@@ -489,7 +495,7 @@ class Baryonification3D(BaryonificationClass):
         #Adding some 20% buffer just in case
         r_min = np.min([np.min(r), 1e-6])
         r_max = np.max([np.max(r), 1000])
-        r_int = np.geomspace(r_min/1.2, r_max*1.2, 500)
+        r_int = np.geomspace(r_min/1.2, r_max*1.2, 50_000)
         
         dlnr  = np.log(r_int[1]/r_int[0])
         rho   = model.real(self.cosmo, r_int, M, a)
@@ -506,7 +512,7 @@ class Baryonification3D(BaryonificationClass):
         #across them. This helps deal with ringing profiles due to 
         #fourier space issues, where profile could go negative sometimes
         for M_i in range(M_enc.shape[0]):
-            Mask     = (rho[M_i] > 0) & (np.isfinite(M[M_i])) #Keep only finite points, and ones with increasing density
+            Mask     = (rho[M_i] > 0) & (np.isfinite(M_enc[M_i])) #Keep only finite points, and ones with increasing density
             M_f[M_i] = np.exp( interpolate.PchipInterpolator(np.log(r_int)[Mask], np.log(M_enc[M_i])[Mask], extrapolate = False)(lnr) )
         
         if isinstance(M, (float, int) ): M_f = np.squeeze(M_f, axis = 0)
@@ -604,7 +610,7 @@ class Baryonification2D(BaryonificationClass):
         #Adding some 20% buffer just in case
         r_min = np.min([np.min(r), 1e-6])
         r_max = np.max([np.max(r), 1000])
-        r_int = np.geomspace(r_min/1.5, r_max*1.5, 500)
+        r_int = np.geomspace(r_min/1.5, r_max*1.5, 50_000)
         
         #The scale fac. is used in Sigma cause the projection in ccl is
         #done in comoving coords not physical coords
