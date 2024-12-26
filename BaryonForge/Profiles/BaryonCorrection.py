@@ -136,7 +136,8 @@ class BaryonificationClass(object):
     def setup_interpolator(self, 
                            z_min = 1e-2, z_max = 5, N_samples_z = 30, z_linear_sampling = False, 
                            M_min = 1e12, M_max = 1e16, N_samples_Mass = 30, 
-                           R_min = 1e-3, R_max = 1e2, N_samples_R = 100, 
+                           R_min = 1e-3, R_max = 1e2, N_samples_R = 100,
+                           Rdelta_min = 1e-3, Rdelta_max = 10, Rdelta_sampling = False,
                            other_params = {}, verbose = True):
         
         """
@@ -171,6 +172,14 @@ class BaryonificationClass(object):
             Maximum radius for the interpolation, in comoving Mpc. Default is 1e2.
         N_samples_R : int, optional
             Number of radius samples. Default is 100.
+        Rdelta_min : float, optional
+            Minimum radius (in units of halo radius) for the interpolation. Default is r/Rdelta = 1e-3.
+        Rdelta_max : float, optional
+            Maximum radius (in units of halo radius) for the interpolation. Default is r/Rdelta = 10.
+        Rdelta_sampling : bool, optional
+            If True, build (and sample) from a table where radius is r/Rdelta instead of r. This is important
+            for any models that have sharp features (eg. Arico20) as a function of Rdelta. The model is built
+            the same, but the interpolation table is organized differently as as to improve accuracy for such models.
         other_params : dict, optional
             Additional parameters for model customization. To be provided in the format `{key : [list-like of vals]}`. 
             The default is an empty dictionary.
@@ -186,11 +195,17 @@ class BaryonificationClass(object):
         especially when using pixel window convolutions.
         """
 
+        if z_min <= 0: 
+            assert z_linear_sampling, f"Geometric series not possible for {z_min} < z < {z_max}. Set z_linear_sampling = True, or z_min > 0"
+
         M_range  = np.geomspace(M_min, M_max, N_samples_Mass)
         r        = np.geomspace(R_min, R_max, N_samples_R)
         z_range  = np.linspace(z_min, z_max, N_samples_z) if z_linear_sampling else np.geomspace(z_min, z_max, N_samples_z)
+        a_range  = 1/(1 + z_range)
         p_keys   = list(other_params.keys()); setattr(self, 'p_keys', p_keys)
         d_interp = np.zeros([z_range.size, M_range.size, r.size] + [other_params[k].size for k in p_keys])
+
+        if Rdelta_sampling: rdelta_range = np.geomspace(Rdelta_min, Rdelta_max, N_samples_R)
         
         #If other_params is empty then iterator will be empty and the code still works fine
         iterator = [p for p in product(*[np.arange(other_params[k].size) for k in p_keys])]
@@ -205,8 +220,8 @@ class BaryonificationClass(object):
                         _set_parameter(self.DMO, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                         _set_parameter(self.DMB, p_keys[k_i], other_params[p_keys[k_i]][c[k_i]])
                     
-                    M_DMO = self.get_masses(self.DMO, r, M_range, 1/(1 + z_range[j]))
-                    M_DMB = self.get_masses(self.DMB, r, M_range, 1/(1 + z_range[j]))
+                    M_DMO = self.get_masses(self.DMO, r, M_range, a_range[j])
+                    M_DMB = self.get_masses(self.DMB, r, M_range, a_range[j])
                     
                     for i in range(M_range.size):
                         ln_DMB    = np.log(M_DMB[i])
@@ -268,6 +283,10 @@ class BaryonificationClass(object):
                             offset = np.exp(interp_DMB(interp_DMO(np.log(r)))) - r
                             offset = np.where(np.isfinite(offset), offset, 0)
 
+                            if Rdelta_sampling: 
+                                Rdelta  = self.mass_def.get_radius(self.cosmo, M_range[i], a_range[j]) / a_range[j]
+                                offset = np.interp(rdelta_range, r/Rdelta, offset)
+
                         #If broken, then these halos contribute nothing to the displacement function.
                         #Just provide a warning saying this is happening
                         else:
@@ -284,15 +303,17 @@ class BaryonificationClass(object):
                     pbar.update(1)
 
 
-        input_grid = tuple([np.log(1 + z_range), np.log(M_range), np.log(r)] + [other_params[k] for k in p_keys])
+        input_rad  = np.log(r) if not Rdelta_sampling else np.log(rdelta_range)
+        input_grid = tuple([np.log(1 + z_range), np.log(M_range), input_rad] + [other_params[k] for k in p_keys])
 
         self.raw_input_d = d_interp
         self.raw_input_z_range = np.log(1 + z_range)
         self.raw_input_M_range = np.log(M_range)
-        self.raw_input_r_range = np.log(r)
+        self.raw_input_r_range = input_rad
         for k in other_params.keys(): setattr(self, 'raw_input_%s_range' % k, other_params[k]) #Save other raw inputs too
             
         self.interp_d = interpolate.RegularGridInterpolator(input_grid, d_interp, bounds_error = False, fill_value = np.nan)    
+        self.Rdelta_sampling = Rdelta_sampling #Set so we know what to do during readout
 
         #Once all tabulation is done, we don't need to keep P(k) calculations in cosmology object.
         #This is good because the Pk class is not pickleable, so by destorying it here we
@@ -346,10 +367,17 @@ class BaryonificationClass(object):
         
         for i in range(M_use.size):
             M_in  = np.log(M_use[i])*empty
-            p_in  = tuple([z_in, M_in, r_in] + k_in)
-            displ[i] = table(p_in)
+            R     = self.mass_def.get_radius(self.cosmo, M_use[i], a)/a #in comoving Mpc
             
-            R        = self.mass_def.get_radius(self.cosmo, np.atleast_1d(M), a)/a #in comoving Mpc
+            #If Rdelta sampling, the sample in r/Rdelta not r.
+            #The table would have been constructed appropriately
+            if not self.Rdelta_sampling:
+                p_in     = tuple([z_in, M_in, r_in] + k_in)
+                displ[i] = table(p_in)
+            else:
+                p_in     = tuple([z_in, M_in, r_in - np.log(R)] + k_in)
+                displ[i] = table(p_in)
+            
             inside   = (r < self.epsilon_max*R)
             displ[i] = np.where(inside, displ, 0) #Set large-scale displacements to 0
             

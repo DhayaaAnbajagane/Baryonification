@@ -2,7 +2,7 @@ import numpy as np
 import pyccl as ccl
 from operator import add, mul, sub, truediv, pow, abs, neg, pos
 
-__all__ = ['generate_operator_method', 'destory_Pk']
+__all__ = ['generate_operator_method', 'destory_Pk', 'build_cosmodict']
 
 def generate_operator_method(op, reflect = False):
     """
@@ -155,3 +155,56 @@ def destory_Pk(cosmo):
     cosmo._pk_nl  = {}
 
     return cosmo
+
+
+def build_cosmodict(cosmo):
+    """
+    Generate a dictionary containing a subset of cosmological parameters from a pyccl Cosmology object.
+    
+    This function extracts key cosmological parameter values from a pyccl Cosmology object and stores 
+    them in a dictionary. If the `sigma8` parameter is not already computed (NaN), it triggers its computation.
+
+    Parameters
+    ----------
+    cosmo : pyccl.core.Cosmology
+        A pyccl Cosmology object containing the cosmological model parameters.
+    
+    Returns
+    -------
+    dict
+        A dictionary with the following keys:
+        - 'Omega_m' : float
+            The total matter density parameter.
+        - 'Omega_b' : float
+            The baryonic matter density parameter.
+        - 'sigma8' : float
+            The normalization of the power spectrum.
+        - 'h' : float
+            The dimensionless Hubble constant.
+        - 'n_s' : float
+            The spectral index of the primordial power spectrum.
+        - 'w0' : float
+            The equation-of-state parameter for dark energy (constant term).
+        - 'wa' : float
+            The equation-of-state parameter for dark energy (time-dependent term).
+    
+    Notes
+    -----
+    If `sigma8` is not already computed in the Cosmology object, this function invokes 
+    `cosmo.compute_sigma()` to compute and update its value before returning the dictionary.
+    """
+    
+    cdict = {'Omega_m' : cosmo.cosmo.params.Omega_m,
+             'Omega_b' : cosmo.cosmo.params.Omega_b,
+             'sigma8'  : cosmo.cosmo.params.sigma8,
+             'h'       : cosmo.cosmo.params.h,
+             'n_s'     : cosmo.cosmo.params.n_s,
+             'w0'      : cosmo.cosmo.params.w0,
+             'wa'      : cosmo.cosmo.params.wa,
+            }
+    
+    if np.isnan(cdict['sigma8']):
+        cosmo.compute_sigma()
+        cdict['sigma'] = cosmo.cosmo.params.sigma8
+        
+    return cdict

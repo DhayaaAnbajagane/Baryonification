@@ -680,6 +680,11 @@ class Gas(AricoProfiles):
     '''
     def __init__(self, **kwargs): self.myprof = BoundGas(**kwargs) + EjectedGas(**kwargs) + ReaccretedGas(**kwargs)
     def __getattr__(self, name):  return getattr(self.myprof, name)
+    
+    #Need to explicitly set these two methods (to enable pickling)
+    #since otherwise the getattr call above leads to infinite recursions.
+    def __getstate__(self): self.__dict__.copy()    
+    def __setstate__(self, state): self.__dict__.update(state)
 
 
 class ModifiedDarkMatter(AricoProfiles):
