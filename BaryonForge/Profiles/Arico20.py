@@ -6,6 +6,7 @@ import warnings
 from scipy import interpolate, special
 from ..utils.Tabulate import _set_parameter
 from . import Schneider19 as S19
+from .Thermodynamic import G, Msun_to_Kg, Mpc_to_m
 
 __all__ = ['model_params', 'AricoProfiles', 
            'DarkMatter', 'TwoHalo', 'Stars', 'Gas', 'BoundGas', 'EjectedGas', 'ReaccretedGas', 'CollisionlessMatter',
@@ -20,7 +21,10 @@ model_params = ['cdelta', 'a', 'n', #DM profle params and relaxation params
                 'M_r', 'beta_r', 'eta', 'theta_rg', 'sigma_rg', 'epsilon_hydro', #Default gas profile param
 
                 'alpha_sat', 'M1_0', 'alpha_g', 'epsilon_h', #Star params
+
+                'A_nt', 'alpha_nt', #Pressure params
                ]
+
 
 projection_params = ['padding_lo_proj', 'padding_hi_proj', 'n_per_decade_proj'] #Projection params
 
@@ -467,8 +471,7 @@ class BoundGas(AricoProfiles):
         arg   = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
         kfac  = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
         prof  = 1/(1 + u)**beta / (1 + v**2)**2 * kfac
-        prof  = np.where(r_use[None, :] <= R[:, None], prof, 0)
-        prof *= f_bg*M_use[:, None]/Normalization
+        prof *= f_bg*M_use[:, None]/Normalization #This profile is allowed to go beyond R200c!
 
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
@@ -1008,6 +1011,173 @@ class DarkMatterBaryon(S19.DarkMatterBaryon, AricoProfiles):
     
 
 
+class Pressure(AricoProfiles):
+
+    """
+    Class representing the gas density profile.
+
+    This class is derived from the `SchneiderProfiles` class and provides an implementation 
+    of a gas density profile. It calculates the real-space gas density profile, using
+    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+
+    See `SchneiderProfiles` for more docstring details.
+
+    Notes
+    -----
+    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
+    which is computed based on the total baryonic fraction minus the stellar fraction. 
+    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
+    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
+    of the gas distribution.
+
+    The gas density profile is given by:
+
+    .. math::
+
+        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
+        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+
+    where:
+
+    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
+    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
+    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
+
+      .. math::
+
+          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
+
+    - :math:`M_{\\text{tot}}` is the total halo mass.
+    - :math:`N` is the normalization factor to ensure mass conservation.
+    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
+    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
+    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
+    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
+    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
+    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
+    - :math:`r` is the radial distance.
+
+    Examples
+    --------
+    Create a `Gas` profile and compute the density at specific radii:
+
+    >>> gas_profile = Gas(**parameters)
+    >>> cosmo = ...  # Define or load a cosmology object
+    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
+    >>> M = 1e14  # Halo mass in solar masses
+    >>> a = 0.5  # Scale factor corresponding to redshift z
+    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    """
+
+    def __init__(self, gas = None, **kwargs):
+        
+        self.Gas = gas
+        if self.Gas is None: self.Gas = BoundGas(**kwargs)        
+
+        AricoProfiles.__init__(self, **kwargs)
+
+
+    def _real(self, cosmo, r, M, a):
+
+
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+
+        z = 1/a - 1
+
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+
+        if self.cdelta is None:
+            c_M_relation = ccl.halos.concentration.ConcentrationDiemer15(mdef = self.mass_def) #Use the diemer calibration
+        else:
+            c_M_relation = ccl.halos.concentration.ConcentrationConstant(self.cdelta, mdef = self.mass_def)
+
+        #Get concentration values, and the effective equation of state, Gamma    
+        c    = c_M_relation.get_concentration(cosmo, M_use, a)[:, None]
+        r_s  = R[:, None]/c
+        Norm = 4*np.pi*r_s**3 * (np.log(1 + c) - c/(1 + c))
+        rhoc = M_use[:, None]/Norm
+        xp   = c * self.theta_out
+        Geff = 1 + ((1 + xp)*np.log(1 + xp) - xp) / ((1 + 3*xp) * np.log(1 + xp))
+        
+        #Normalization from Equation 5 in https://arxiv.org/pdf/2406.01672v1
+        rho0  = self.Gas.real(cosmo, np.atleast_1d([0]), M_use, a) #To get normalization of gas profile
+        P0    = 4*np.pi*G * (rhoc * r_s**2)/np.power(rho0, Geff - 1) * (1 - 1/Geff) 
+        P0    = P0 * (Msun_to_Kg * 1e3) / (Mpc_to_m * 1e2) #Convert to CGS. Using only one factor of Mpc_to_m is correct!
+
+        #Now compute the final profile
+        rhoBG = self.Gas.real(cosmo, r_use, M_use, a)
+        prof  = P0 * np.power(rhoBG, Geff)
+        
+        arg   = (r_use[None, :] - self.cutoff)
+        arg   = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
+        kfac  = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
+        prof  = prof * kfac
+
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
+
+        return prof
+    
+
+class NonThermalFracGreen20(AricoProfiles):
+    
+    """
+    Class for computing the non-thermal pressure fraction profile using the Green et al. (2020) model.
+
+    
+    Notes
+    -----
+    The model is based on parameters calibrated to simulations and is specifically defined 
+    with respect to \( R_{200m} \), the radius within which the mean density is 200 times 
+    the mean matter density of the universe.
+
+    The non-thermal pressure fraction \( f_{\\text{nt}}(r) \) is calculated using:
+
+    .. math::
+
+        f_{\\text{nt}}(r) = 1 - a \\left(1 + \\exp\\left(-\\left(\\frac{x}{b}\\right)^c\\right)\\right) 
+                            \\left(\\frac{\\nu_M}{4.1}\\right)^{\\frac{d}{1 + \\left(\\frac{x}{e}\\right)^f}}
+
+    where:
+        - \( x = \\frac{r}{R_{200m}} \)
+        - \( \\nu_M = \\frac{1.686}{\\sigma(M_{200m})} \) is the peak height parameter.
+        - \( a, b, c, d, e, f \) are model parameters calibrated to fit simulation data.
+
+    There are no free parameters in this model; it is completely specified by the halo mass and redshift.
+    """
+
+    def _real(self, cosmo, r, M, a):
+        
+        r_use = np.atleast_1d(r)
+        M_use = np.atleast_1d(M)
+
+        z = 1/a - 1
+
+        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        
+        #They define the model with R200m, so gotta use that redefinition here.
+        M200m = self.mass_def.translate_mass(cosmo, M_use, a, ccl.halos.massdef.MassDef200m())
+        R200m = ccl.halos.massdef.MassDef200m().get_radius(cosmo, M_use, a)/a #in comoving distance
+
+        x = r_use/R200m[:, None]
+
+        a, b, c, d, e, f = 0.495, 0.719, 1.417,-0.166, 0.265, -2.116 #Values from Green20
+        a    = self.A_nt * np.power(1 + z, self.alpha_nt)
+        nu_M = 1.686/ccl.sigmaM(cosmo, M200m, a)
+        nu_M = nu_M[:, None]
+        nth  = 1 - a * (1 + np.exp(-(x/b)**c)) * (nu_M/4.1)**(d/(1 + (x/e)**f))
+        prof = nth #Rename just for consistency sake
+        
+        #Handle dimensions so input dimensions are mirrored in the output
+        if np.ndim(r) == 0:
+            prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0:
+            prof = np.squeeze(prof, axis=0)
+
+        return prof
+    
 class BoundGasDeprecated(AricoProfiles):
 
     """
