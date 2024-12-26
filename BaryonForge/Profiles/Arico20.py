@@ -474,6 +474,7 @@ class BoundGas(AricoProfiles):
         prof  = 1/(1 + u)**beta / (1 + v**2)**2 * kfac
         prof *= f_bg*M_use[:, None]/Normalization #This profile is allowed to go beyond R200c!
 
+
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
         if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
