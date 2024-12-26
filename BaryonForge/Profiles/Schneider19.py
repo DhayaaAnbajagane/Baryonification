@@ -76,7 +76,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     model_param_names      = model_params
     projection_param_names = projection_params
 
-    def __init__(self, mass_def = ccl.halos.massdef.MassDef(200, 'critical'), 
+    def __init__(self, mass_def = ccl.halos.massdef.MassDef(200, 'critical', c_m_relation = 'Diemer15'), 
                  use_fftlog_projection = False, 
                  padding_lo_proj = 0.1, padding_hi_proj = 10, n_per_decade_proj = 10, 
                  xi_mm = None, 
@@ -967,7 +967,7 @@ class CollisionlessMatter(SchneiderProfiles):
         if np.min(r) < self.r_min_int: 
             warnings.warn(f"Decrease integral lower limit, r_min_int ({self.r_min_int}) < minimum radius ({np.min(r)})", UserWarning)
         if np.max(r) > self.r_max_int: 
-            warnings.warn(f"Increase integral lower limit, r_min_int ({self.r_max_int}) < minimum radius ({np.max(r)})", UserWarning)
+            warnings.warn(f"Increase integral upper limit, r_max_int ({self.r_max_int}) < maximum radius ({np.max(r)})", UserWarning)
 
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
