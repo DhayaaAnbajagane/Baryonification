@@ -51,7 +51,7 @@ class BaseThermodynamicProfile(SchneiderProfiles):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
-        for m in self.model_param_names + self.projection_param_names:
+        for m in self.model_param_names:
             if m in kwargs.keys():
                 setattr(self, m, kwargs[m])
             else:

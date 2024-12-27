@@ -27,8 +27,6 @@ model_params = ['cdelta', 'a', 'n', #DM profle params and relaxation params
                ]
 
 
-projection_params = ['padding_lo_proj', 'padding_hi_proj', 'n_per_decade_proj'] #Projection params
-
 class AricoProfiles(S19.SchneiderProfiles):
     """
     Base class for defining halo density profiles based on Schneider et al. models.
@@ -74,8 +72,7 @@ class AricoProfiles(S19.SchneiderProfiles):
     """
 
     #Define the new param names
-    model_param_names      = model_params
-    projection_param_names = projection_params
+    model_param_names = model_params
 
     def __init__(self, **kwargs):
         
@@ -83,7 +80,7 @@ class AricoProfiles(S19.SchneiderProfiles):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
-        for m in self.model_param_names + self.projection_param_names:
+        for m in self.model_param_names:
             if m in kwargs.keys():
                 setattr(self, m, kwargs[m])
             else:
@@ -763,7 +760,7 @@ class ModifiedDarkMatter(AricoProfiles):
 
     def _safe_Pchip_minimize(self, x, y):
 
-        assert (np.min(x) < 0) & (np.max(x) > 0), f"Cannot minimize. Range {np.min(x)} < LHS - RHS {np.max(x)} does not include zero!"
+        assert (np.min(x) < 0) & (np.max(x) > 0), f"Cannot minimize. Range {np.min(x)} < LHS - RHS < {np.max(x)} does not include zero!"
         ind = np.argmin(np.abs(x - 0)) #Find the point around which we should search for minima
         buf = 5 #Large enough (one-sided) buffer in case any weird interpolator effects from using too few points
         ind = slice(ind - buf, ind + buf)

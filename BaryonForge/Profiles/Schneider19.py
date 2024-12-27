@@ -26,8 +26,6 @@ model_params = ['cdelta', 'epsilon', 'a', 'n', #DM profle params
                 'alpha_nt', 'nu_nt', 'gamma_nt', 'mean_molecular_weight' #Non-thermal pressure and gas density
                ]
 
-projection_params = ['padding_lo_proj', 'padding_hi_proj', 'n_per_decade_proj'] #Projection params
-
 class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     """
     Base class for defining halo density profiles based on Schneider et al. models.
@@ -73,8 +71,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
     """
 
     #Define the params used in this model
-    model_param_names      = model_params
-    projection_param_names = projection_params
+    model_param_names = model_params
 
     def __init__(self, mass_def = ccl.halos.massdef.MassDef(200, 'critical', c_m_relation = 'Diemer15'), 
                  use_fftlog_projection = False, 
@@ -84,7 +81,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
-        for m in self.model_param_names + self.projection_param_names:
+        for m in self.model_param_names:
             if m in kwargs.keys():
                 setattr(self, m, kwargs[m])
             elif ('mu_' in m) or ('nu_' in m) or ('zeta_' in m): #Set mass/red/conc dependence
