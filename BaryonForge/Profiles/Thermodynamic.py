@@ -34,8 +34,8 @@ Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
 
 #Technically P(r -> infty) is zero, but we  may need finite
 #value for numerical reasons (interpolator). This is a
-#computatational constant. We actually set it to zero though.
-Pressure_at_infinity = 0
+#computatational constant.
+Pressure_at_infinity = 1e-200
 
 
 __all__ = ['Pressure', 'NonThermalFrac', 'NonThermalFracGreen20',

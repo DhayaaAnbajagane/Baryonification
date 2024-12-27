@@ -12,14 +12,15 @@ __all__ = ['model_params', 'MeadProfiles',
            'DarkMatter', 'TwoHalo', 'Stars', 'Gas', 'BoundGas', 'EjectedGas', 'ReaccretedGas', 'CollisionlessMatter',
            'DarkMatterOnly', 'DarkMatterBaryon']
 
-model_params = ['cdelta', 'eps1', 'eps2', #DM profle param and relaxation params
+model_params = ['cdelta', 'eps1', 'nu_eps1', 'eps2', #DM profle param and relaxation params
                 'cutoff', 'proj_cutoff', #Cutoff parameters (numerical)
+                'p', 'q',  #Two halo terms
                 
-                'M_0', 'beta', 'Gamma', 'eta_b', #Default gas profile param
+                'M_0', 'beta', 'Gamma', 'nu_Gamma', 'eta_b', #Default gas profile param
 
-                'A_star', 'M_star', 'sigma_star', 'epsilon_h', 'eta', #Star params
+                'A_star', 'nu_A_star', 'M_star', 'nu_M_star', 'sigma_star', 'epsilon_h', 'eta', #Star params
 
-                'T_w0', 'T_w1', #Temperature params
+                'T_w', 'nu_T_w', #Temperature params
                 'mean_molecular_weight', #Gas number density params
                ]
 
@@ -29,6 +30,19 @@ class MeadProfiles(A20.AricoProfiles):
 
     #Define the new param names
     model_param_names = model_params
+
+
+    def _get_fstar(self, M_use, a):
+        
+        z     = 1/a - 1
+        Astr  = self.A_star + self.nu_A_star * z
+        Mstr  = self.M_star * np.exp(z * self.nu_M_star)
+        f_str = Astr * np.exp(-np.power(np.log10(M_use/Mstr)/self.sigma_star, 2)/2)
+        f_str = np.where(M_use > Mstr, np.max([f_str, Astr/3 * np.ones_like(f_str)]), f_str)
+        f_cen = f_str * np.where(M_use < Mstr, 1, np.power(M_use/Mstr, self.eta))
+        f_sat = f_str * np.where(M_use < Mstr, 0, 1 - np.power(M_use/Mstr, self.eta))
+        
+        return f_str, f_cen, f_sat    
 
 
 class DarkMatter(MeadProfiles):
@@ -104,7 +118,6 @@ class DarkMatter(MeadProfiles):
 
         r_s, c, rho_c = r_s[:, None], c[:, None], rho_c[:, None]
         r_use, R      = r_use[None, :], R[:, None]
-
 
         arg  = (r_use - self.cutoff)
         arg  = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
@@ -196,9 +209,7 @@ class Stars(MeadProfiles):
         M_use = np.atleast_1d(M)
 
         R     = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-        f_str = self.A_star * np.exp(-np.power(np.log10(M_use/self.M_star)/self.sigma_star, 2)/2)
-        f_str = np.where(M_use > self.M_star, np.max([f_str, self.A_star/3 * np.ones_like(f_str)]), f_str)
-        f_cen = f_str * np.where(M_use < self.M_star, 1, np.power(M_use/self.M_star, self.eta))
+        f_str, f_cen, f_sat = self._get_fstar(M_use, a)
         f_cen = f_cen[:, None]
         R_h   = self.epsilon_h * R[:, None]
 
@@ -283,25 +294,28 @@ class BoundGas(MeadProfiles):
         else:
             c_M_relation = ccl.halos.concentration.ConcentrationConstant(self.cdelta, mdef = self.mass_def)
 
-        c   = c_M_relation.get_concentration(cosmo, M_use, a)
-        R   = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-        r_s = R/c
-        r_s = r_s[:, None]
+        z     = 1/a - 1
+        c     = c_M_relation.get_concentration(cosmo, M_use, a)
+        R     = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
+        r_s   = R/c
+        r_s   = r_s[:, None]
+        Geff  = self.Gamma + self.nu_Gamma * z
 
-        f_str = self.A_star * np.exp(-np.power(np.log10(M_use/self.M_star)/self.sigma_star, 2)/2)
-        f_str = np.where(M_use > self.M_star, np.max([f_str, self.A_star/3 * np.ones_like(f_str)]), f_str)
-        f_cen = f_str * np.where(M_use < self.M_star, 1, np.power(M_use/self.M_star, self.eta))
-        f_sat = f_str * np.where(M_use < self.M_star, 0, 1 - np.power(M_use/self.M_star, self.eta))
+        f_str, f_cen, f_sat = self._get_fstar(M_use, a)
         f_bar = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
         f_bnd = (f_bar - f_str) * np.power(self.M_0/M_use, self.beta) / (1 + np.power(self.M_0/M_use, self.beta))
         f_bnd = f_bnd[:, None]
         
-        #Integrate over wider region in radii to get normalization of gas profile
-        #Using a number narrower range than Schneider cause we only need to go to R200c
-        r_integral    = np.geomspace(1e-6, 100, 500)
-        x_integral    = r_integral/r_s
-        prof_integral = np.power(np.log(1 + x_integral) / x_integral, 1/(self.Gamma - 1))
-        Normalization = np.trapz(4 * np.pi * r_integral**2 * prof_integral, r_integral, axis = -1)[:, None]
+        #Do normalization halo-by-halo, since we want custom radial ranges.
+        #This way, we can handle sharp transition at R200c without needing
+        #super fine resolution in the grid.
+        Normalization = np.ones_like(M_use)
+        for m_i in range(M_use.shape[0]):
+            r_integral    = np.geomspace(1e-6, R[m_i], 500)
+            x_integral    = r_integral/r_s[m_i]
+            prof_integral = np.power(np.log(1 + x_integral) / x_integral, 1/(Geff - 1))
+            Normalization[m_i] = np.trapz(4 * np.pi * r_integral**2 * prof_integral, r_integral)
+        Normalization = Normalization[:, None]
 
         del prof_integral, x_integral
 
@@ -309,7 +323,7 @@ class BoundGas(MeadProfiles):
         arg   = np.where(arg > 30, np.inf, arg) #This is to prevent an overflow in the exponential
         kfac  = 1/( 1 + np.exp(2*arg) ) #Extra exponential cutoff
         x_use = r_use / r_s
-        prof  = np.power(np.log(1 + x_use) / x_use, 1/(self.Gamma - 1))
+        prof  = np.power(np.log(1 + x_use) / x_use, 1/(Geff - 1))
         prof  = np.where(r_use[None, :] <= R[:, None], prof, 0)
         prof *= f_bnd*M_use[:, None]/Normalization
 
@@ -383,18 +397,16 @@ class EjectedGas(MeadProfiles):
 
     def _real(self, cosmo, r, M, a):
 
-
         r_use = np.atleast_1d(r)
         M_use = np.atleast_1d(M)
 
         z = 1/a - 1
         R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
 
-        f_str = self.A_star * np.exp(-np.power(np.log10(M_use/self.M_star)/self.sigma_star, 2)/2)
-        f_str = np.where(M_use > self.M_star, np.max([f_str, self.A_star/3 * np.ones_like(f_str)]), f_str)
+        f_str, f_cen, f_sat = self._get_fstar(M_use, a)
         f_bar = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
         f_bnd = (f_bar - f_str) * np.power(self.M_0/M_use, self.beta) / (1 + np.power(self.M_0/M_use, self.beta))
-        f_ej  = (f_bar - f_bnd - f_str)
+        f_ej  = ((f_bar - f_str) - f_bnd)[:, None]
 
         #Now use the escape radius, which is r_esc = v_esc * t_hubble
         #and this reduces down to just 1/2 * sqrt(Delta) * R_Delta
@@ -402,7 +414,7 @@ class EjectedGas(MeadProfiles):
         rgrid = np.geomspace(1e-2, 100, 100)
         Term1 = 1 - special.erf(self.eta_b * R_esc / np.sqrt(2) / rgrid)
         Term2 = np.sqrt(2/np.pi) * self.eta_b * R_esc / rgrid * np.exp(-np.power(self.eta_b*R_esc/rgrid, 2)/2)
-        Diff  = Term1 + Term2 - 1/f_bar * f_ej[:, None]
+        Diff  = Term1 + Term2 - 1/f_bar * f_ej
 
         R_ej  = np.exp([self._safe_Pchip_minimize(Diff[m_i], np.log(rgrid)) for m_i in range(Diff.shape[0])])[:, None]
 
@@ -479,11 +491,13 @@ class CollisionlessMatter(MeadProfiles):
     >>> density_profile = dm_profile.real(cosmo, r, M, a)
     """
 
-    def _modify_concentration(self, cosmo, c, M):
+    def _modify_concentration(self, cosmo, c, M, a):
 
+        z      = 1/a - 1
         f_bar  = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
         f_bnd  = f_bar * np.power(self.M_0/M, self.beta) / (1 + np.power(self.M_0/M, self.beta))
-        factor = (1 + self.eps1 + (self.eps2 - self.eps1) * f_bnd / f_bar)
+        eps1   = self.eps1 + z * self.nu_eps1
+        factor = (1 + eps1 + (self.eps2 - eps1) * f_bnd / f_bar)
 
         return c * factor
     
@@ -502,18 +516,16 @@ class CollisionlessMatter(MeadProfiles):
             c_M_relation = ccl.halos.concentration.ConcentrationConstant(self.cdelta, mdef = self.mass_def)
             
         c   = c_M_relation.get_concentration(cosmo, M_use, a)
-        c   = self._modify_concentration(cosmo, c, M_use)
+        c   = self._modify_concentration(cosmo, c, M_use, a)
         R   = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
         r_s = R/c
 
         #Get the normalization (rho_c) analytically since we don't have a truncation radii like S19 does
         Norm  = 4*np.pi*r_s**3 * (np.log(1 + c) - c/(1 + c))
         rho_c = M_use/Norm
-        f_str = self.A_star * np.exp(-np.power(np.log10(M_use/self.M_star)/self.sigma_star, 2)/2)
-        f_str = np.where(M_use > self.M_star, np.max([f_str, self.A_star/3 * np.ones_like(f_str)]), f_str)
-        f_sat = f_str * np.where(M_use < self.M_star, 0, 1 - np.power(M_use/self.M_star, self.eta))
+        f_str, f_cen, f_sat = self._get_fstar(M_use, a)
         f_bar = cosmo.cosmo.params.Omega_b/cosmo.cosmo.params.Omega_m
-        rho_c = rho_c * (1 - f_bar - f_sat) #Rescale to correct fraction of mass
+        rho_c = rho_c * (1 - f_bar + f_sat) #Rescale to correct fraction of mass
 
         r_s, c, rho_c = r_s[:, None], c[:, None], rho_c[:, None]
         r_use, R      = r_use[None, :], R[:, None]
@@ -533,7 +545,7 @@ class CollisionlessMatter(MeadProfiles):
 
 class DarkMatterOnly(S19.DarkMatterOnly, MeadProfiles):
 
-    __doc__ = S19.DarkMatterOnly.__doc__.replace('SchneiderProfiles', 'AricoProfiles')
+    __doc__ = S19.DarkMatterOnly.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
 
     def __init__(self, darkmatter = None, **kwargs):
         
@@ -541,9 +553,7 @@ class DarkMatterOnly(S19.DarkMatterOnly, MeadProfiles):
         self.TwoHalo    = TwoHalo(**kwargs) * 0 #Should not add 2-halo in Arico method
 
         if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
-            
         MeadProfiles.__init__(self, **kwargs)
-
 
 class DarkMatterBaryon(S19.DarkMatterBaryon, MeadProfiles):
 
@@ -559,6 +569,42 @@ class DarkMatterBaryon(S19.DarkMatterBaryon, MeadProfiles):
         
         if self.Gas is None:        self.Gas        = Gas(**kwargs)        
         if self.Stars is None:      self.Stars      = Stars(**kwargs)
+        if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
+        if self.CollisionlessMatter is None: self.CollisionlessMatter = CollisionlessMatter(**kwargs)
+
+        MeadProfiles.__init__(self, **kwargs)
+
+
+class DarkMatterOnlywithLSS(S19.DarkMatterOnly, MeadProfiles):
+
+    __doc__ = S19.DarkMatterOnly.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
+
+    def __init__(self, darkmatter = None, twohalo = None, **kwargs):
+        
+        self.DarkMatter = darkmatter
+        self.TwoHalo    = twohalo
+
+        if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
+        if self.TwoHalo is None: self.TwoHalo = TwoHalo(**kwargs)
+
+        MeadProfiles.__init__(self, **kwargs)
+
+
+class DarkMatterBaryonwithLSS(S19.DarkMatterBaryon, MeadProfiles):
+
+    __doc__ = S19.DarkMatterBaryon.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
+
+    def __init__(self, gas = None, stars = None, collisionlessmatter = None, darkmatter = None, twohalo = None, **kwargs):
+        
+        self.Gas   = gas
+        self.Stars = stars
+        self.TwoHalo    = twohalo
+        self.DarkMatter = darkmatter
+        self.CollisionlessMatter = collisionlessmatter
+        
+        if self.Gas is None:        self.Gas        = Gas(**kwargs)        
+        if self.Stars is None:      self.Stars      = Stars(**kwargs)
+        if self.TwoHalo is None:    self.TwoHalo    = TwoHalo(**kwargs)
         if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
         if self.CollisionlessMatter is None: self.CollisionlessMatter = CollisionlessMatter(**kwargs)
 
@@ -738,7 +784,7 @@ class Pressure(MeadProfiles):
         P1   = T * n * kb_cgs
 
         #The second, "ejected" component
-        T    = self.T_w0 * np.exp(self.T_w1 * z)
+        T    = self.T_w * np.exp(self.nu_T_w * z)
         n    = self.EjectedGas.real(cosmo, r_use, M, a) / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
         P2   = T * n * kb_cgs
 
@@ -746,3 +792,22 @@ class Pressure(MeadProfiles):
 
         return prof
     
+
+#Default params, provided in Table 2 of https://arxiv.org/pdf/2005.00009
+Params_TAGN_7p6 = {'A_star' : 0.0346, 'nu_A_star' : -0.0092, 'M_star' : np.power(10, 12.5506), 'nu_M_star' : -0.4615,
+                   'eta' : -0.4970, 'eps1' : 0.4021, 'nu_eps1' : 0.0435, 'Gamma' : 1.2763, 'nu_Gamma' : -0.0554, 
+                   'M_0' : np.power(10, 13.0978), 'T_w' : np.power(10, 6.6762), 'nu_T_w' : -0.5566,
+                   'eps2' : 0, 'mean_molecular_weight' : 0.59, 'eta_b' : 0.5, 'sigma_star' : 1.2, 'beta' : 0.6,
+                   'epsilon_h' : 0.015, 'p' : 0.3, 'q' : 0.707}
+
+Params_TAGN_7p8 = {'A_star' : 0.0342, 'nu_A_star' : -0.0105, 'M_star' : np.power(10, 12.3715), 'nu_M_star' : 0.0149,
+                   'eta' : -0.4052, 'eps1' : 0.1236, 'nu_eps1' : -0.0187, 'Gamma' : 1.2956, 'nu_Gamma' : -0.0937, 
+                   'M_0' : np.power(10, 13.4854), 'T_w' : np.power(10, 6.6545), 'nu_T_w' : -0.3652,
+                   'eps2' : 0, 'mean_molecular_weight' : 0.59, 'eta_b' : 0.5, 'sigma_star' : 1.2, 'beta' : 0.6,
+                   'epsilon_h' : 0.015, 'p' : 0.3, 'q' : 0.707}
+
+Params_TAGN_8p0 = {'A_star' : 0.0321, 'nu_A_star' : -0.0094, 'M_star' : np.power(10, 12.3032), 'nu_M_star' : -0.0817,
+                   'eta' : -0.3443, 'eps1' : -0.1158, 'nu_eps1' : 0.1408, 'Gamma' : 1.2861, 'nu_Gamma' : -0.1382, 
+                   'M_0' : np.power(10, 14.1254), 'T_w' : np.power(10, 6.6615), 'nu_T_w' : -0.0617,
+                   'eps2' : 0, 'mean_molecular_weight' : 0.59, 'eta_b' : 0.5, 'sigma_star' : 1.2, 'beta' : 0.6,
+                   'epsilon_h' : 0.015, 'p' : 0.3, 'q' : 0.707}
