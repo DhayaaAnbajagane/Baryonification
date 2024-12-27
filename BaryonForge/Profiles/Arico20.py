@@ -74,6 +74,7 @@ class AricoProfiles(S19.SchneiderProfiles):
     #Define the new param names
     model_param_names = model_params
 
+
     def __init__(self, **kwargs):
         
         super().__init__(**kwargs)
@@ -765,6 +766,7 @@ class ModifiedDarkMatter(AricoProfiles):
     def _safe_Pchip_minimize(self, x, y):
 
         assert (np.min(x) < 0) & (np.max(x) > 0), f"Cannot minimize. Range {np.min(x)} < LHS - RHS < {np.max(x)} does not include zero!"
+
         ind = np.argmin(np.abs(x - 0)) #Find the point around which we should search for minima
         buf = 5 #Large enough (one-sided) buffer in case any weird interpolator effects from using too few points
         ind = slice(ind - buf, ind + buf)
@@ -844,7 +846,6 @@ class CollisionlessMatter(AricoProfiles):
         self.r_steps    = r_steps
         
         super().__init__(**kwargs)
-
 
     def _real(self, cosmo, r, M, a):
 
@@ -1012,7 +1013,6 @@ class DarkMatterBaryon(S19.DarkMatterBaryon, AricoProfiles):
 
         AricoProfiles.__init__(self, **kwargs)
 
-
 class DarkMatterOnlywithLSS(S19.DarkMatterOnly, AricoProfiles):
 
     __doc__ = S19.DarkMatterOnly.__doc__.replace('SchneiderProfiles', 'AricoProfiles')
@@ -1047,7 +1047,6 @@ class DarkMatterBaryonwithLSS(S19.DarkMatterBaryon, AricoProfiles):
         if self.CollisionlessMatter is None: self.CollisionlessMatter = CollisionlessMatter(**kwargs)
 
         AricoProfiles.__init__(self, **kwargs)
-
     
 class Pressure(AricoProfiles):
 
@@ -1113,7 +1112,6 @@ class Pressure(AricoProfiles):
         if self.Gas is None: self.Gas = BoundGas(**kwargs)        
 
         super().__init__(**kwargs)
-
 
     def _real(self, cosmo, r, M, a):
 
@@ -1316,7 +1314,6 @@ class Temperature(AricoProfiles):
 
         return prof
     
-
 class ExtendedBoundGas(AricoProfiles):
 
     """
