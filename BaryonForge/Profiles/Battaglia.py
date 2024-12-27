@@ -1,33 +1,12 @@
 import numpy as np
 import pyccl as ccl
-
-#Define relevant physical constants
-Msun_to_Kg = ccl.physical_constants.SOLAR_MASS
-Mpc_to_m   = ccl.physical_constants.MPC_TO_METER
-G          = ccl.physical_constants.GNEWT / Mpc_to_m**3 * Msun_to_Kg
-m_to_cm    = 1e2
-kb_in_ev   = ccl.physical_constants.KBOLTZ / ccl.physical_constants.EV_IN_J
-
-#Just define some useful conversions/constants
-sigma_T = 6.652458e-29 / Mpc_to_m**2
-m_e     = 9.10938e-31 / Msun_to_Kg
-m_p     = 1.67262e-27 / Msun_to_Kg
-c       = 2.99792458e8 / Mpc_to_m
-
-#Thermodynamic/abundance quantities
-Y         = 0.24 #Helium mass ratio
-Pth_to_Pe = (4 - 2*Y)/(8 - 5*Y) #Factor to convert gas temp. to electron temp
+from .Thermodynamic import (Msun_to_Kg, Mpc_to_m, G, Y, Pth_to_Pe, Pressure_at_infinity)
 
 
-#Technically P(r -> infty) is zero, but we  may need finite
-#value for numerical reasons (interpolator). This is a
-#computatational cosntant
-Pressure_at_infinity = 0
-
-__all__ = ['BattagliaPressure', 'BattagliaElectronPressure', 'BattagliaGasDensity']
+__all__ = ['Pressure', 'ElectronPressure', 'GasDensity']
 
 
-class BattagliaPressure(ccl.halos.profiles.HaloProfile):
+class Pressure(ccl.halos.profiles.HaloProfile):
     """
     Class for implementing the Battaglia pressure profile using CCL's halo profile framework.
 
@@ -188,7 +167,7 @@ class BattagliaPressure(ccl.halos.profiles.HaloProfile):
         return prof
     
     
-class BattagliaElectronPressure(BattagliaPressure):
+class ElectronPressure(Pressure):
     """
     Computes the electron pressure profile based on the Battaglia et al. (2012) model.
 
@@ -223,7 +202,7 @@ class BattagliaElectronPressure(BattagliaPressure):
         return prof
     
     
-class BattagliaGasDensity(ccl.halos.profiles.HaloProfile):
+class GasDensity(ccl.halos.profiles.HaloProfile):
     """
     Computes the gas density profile based on the Battaglia et al. (2012) model.
 
