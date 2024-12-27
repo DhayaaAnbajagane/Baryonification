@@ -11,7 +11,8 @@ Msun_to_Kg = ccl.physical_constants.SOLAR_MASS
 Mpc_to_m   = ccl.physical_constants.MPC_TO_METER
 G          = ccl.physical_constants.GNEWT / Mpc_to_m**3 * Msun_to_Kg
 m_to_cm    = 1e2
-kb_in_ev   = ccl.physical_constants.KBOLTZ / ccl.physical_constants.EV_IN_J
+kb_cgs     = ccl.physical_constants.KBOLTZ * 1e7 
+K_to_kev   = ccl.physical_constants.KBOLTZ / ccl.physical_constants.EV_IN_J * 1e-3
 
 #Just define some useful conversions/constants
 sigma_T = 6.652458e-29 / Mpc_to_m**2
@@ -38,10 +39,59 @@ Pressure_at_infinity = 0
 
 
 __all__ = ['Pressure', 'NonThermalFrac', 'NonThermalFracGreen20',
-           'Temperature', 'ThermalSZ', 'ElectronPressure']
+           'Temperature', 'ThermalSZ', 'ElectronPressure', 'GasNumberDensity']
 
 
-class Pressure(SchneiderProfiles):
+class BaseThermodynamicProfile(SchneiderProfiles):
+
+    def __init__(self, mass_def = ccl.halos.massdef.MassDef(200, 'critical', c_m_relation = 'Diemer15'), 
+                 use_fftlog_projection = False, 
+                 padding_lo_proj = 0.1, padding_hi_proj = 10, n_per_decade_proj = 10,
+                 **kwargs):
+        
+        #Go through all input params, and assign Nones to ones that don't exist.
+        #If mass/redshift/conc-dependence, then set to 1 if don't exist
+        for m in self.model_param_names + self.projection_param_names:
+            if m in kwargs.keys():
+                setattr(self, m, kwargs[m])
+            else:
+                setattr(self, m, None)
+                    
+        #Some params for handling the realspace projection
+        self.padding_lo_proj   = padding_lo_proj
+        self.padding_hi_proj   = padding_hi_proj
+        self.n_per_decade_proj = n_per_decade_proj 
+        
+        #Import all other parameters from the base CCL Profile class
+        super().__init__(mass_def = mass_def)
+
+        #Sets the cutoff scale of all profiles, in comoving Mpc. Prevents divergence in FFTLog
+        #Also set cutoff of projection integral. Should be the box side length
+        self.cutoff      = kwargs['cutoff'] if 'cutoff' in kwargs.keys() else 1e3 #1Gpc is a safe default choice
+        self.proj_cutoff = kwargs['proj_cutoff'] if 'proj_cutoff' in kwargs.keys() else self.cutoff
+        
+        
+        #This allows user to force usage of the default FFTlog projection, if needed.
+        #Otherwise, we use the realspace integration, since that allows for specification
+        #of a hard boundary on radius
+        if not use_fftlog_projection:
+            self._projected = self._projected_realspace
+        else:
+            text = ("You must set the same cutoff for 3D profile and projection profile if you want to use fftlog projection. "
+                    f"You have cutoff = {self.cutoff} and proj_cutoff = {self.proj_cutoff}")
+            assert self.cutoff == self.proj_cutoff, text
+
+
+        #Constant that helps with the fourier transform convolution integral.
+        #This value minimized the ringing due to the transforms
+        self.update_precision_fftlog(plaw_fourier = -2)
+
+        #Need this to prevent projected profile from artificially cutting off
+        self.update_precision_fftlog(padding_lo_fftlog = 1e-2, padding_hi_fftlog = 1e2,
+                                     padding_lo_extra  = 1e-4, padding_hi_extra  = 1e4)
+        
+
+class Pressure(BaseThermodynamicProfile):
     """
     Class for computing the gas pressure profile in halos.
 
@@ -222,16 +272,14 @@ class Pressure(SchneiderProfiles):
         
 
         #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
+        if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
 
         return prof
     
 
 
-class NonThermalFrac(SchneiderProfiles):
+class NonThermalFrac(BaseThermodynamicProfile):
     
     """
     Class for computing the non-thermal pressure fraction profile in halos.
@@ -287,14 +335,14 @@ class NonThermalFrac(SchneiderProfiles):
         - \( \\gamma_{\\text{nt}} \) controls the radial dependence.
     """
 
-    def __init__(self, **kwargs):
-        
-        self.alpha_nt = kwargs['alpha_nt']
-        self.nu_nt    = kwargs['nu_nt']
-        self.gamma_nt = kwargs['gamma_nt']
+    def __init__(self, alpha_nt, nu_nt, gamma_nt, **kwargs):
         
         super().__init__(**kwargs)
         
+        self.alpha_nt = alpha_nt
+        self.nu_nt    = nu_nt
+        self.gamma_nt = gamma_nt
+    
     
     def _real(self, cosmo, r, M, a):
         
@@ -313,16 +361,14 @@ class NonThermalFrac(SchneiderProfiles):
         prof  = f_nt #Rename just for consistency sake
         
         #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
+        if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
 
         return prof
     
     
 
-class NonThermalFracGreen20(SchneiderProfiles):
+class NonThermalFracGreen20(BaseThermodynamicProfile):
     
     """
     Class for computing the non-thermal pressure fraction profile using the Green et al. (2020) model.
@@ -361,8 +407,10 @@ class NonThermalFracGreen20(SchneiderProfiles):
 
         
         #They define the model with R200m, so gotta use that redefinition here.
-        M200m = self.mass_def.translate_mass(cosmo, M_use, a, ccl.halos.massdef.MassDef200m())
-        R200m = ccl.halos.massdef.MassDef200m().get_radius(cosmo, M_use, a)/a #in comoving distance
+        mdef  = ccl.halos.massdef.MassDef(200, 'matter')
+        cnvrt = ccl.halos.mass_translator(mass_in = self.mass_def, mass_out = mdef, concentration = self.mass_def.concentration)
+        M200m = cnvrt(cosmo, M_use, a)
+        R200m = mdef.get_radius(cosmo, M_use, a)/a #in comoving distance
 
         x = r_use/R200m[:, None]
 
@@ -373,10 +421,8 @@ class NonThermalFracGreen20(SchneiderProfiles):
         prof = nth #Rename just for consistency sake
         
         #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
+        if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
 
         return prof
 
@@ -411,7 +457,7 @@ class ElectronPressure(Pressure):
         return prof
 
 
-class GasNumberDensity(SchneiderProfiles):
+class GasNumberDensity(BaseThermodynamicProfile):
     """
     Class for computing the gas number density profile in halos.
 
@@ -460,8 +506,10 @@ class GasNumberDensity(SchneiderProfiles):
         self.Gas = gas
         if self.Gas is None: self.Gas = Gas(**kwargs)
         
-        self.mean_molecular_weight = mean_molecular_weight
         super().__init__(**kwargs)
+        
+        self.mean_molecular_weight = mean_molecular_weight
+        
         
     
     def _real(self, cosmo, r, M, a):
@@ -478,16 +526,10 @@ class GasNumberDensity(SchneiderProfiles):
         rho  = rho.real(cosmo, r_use, M, a)
         prof = rho / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
         
-        #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
-
         return prof
     
     
-class Temperature(SchneiderProfiles):
+class Temperature(BaseThermodynamicProfile):
     """
     Class for computing the temperature profile in halos.
 
@@ -526,7 +568,7 @@ class Temperature(SchneiderProfiles):
         T(r) = \\frac{P}(r)}{n(r) \\cdot k_B}
 
     where:
-        - \( P(r) \) is the pressure profile of a species.
+        - \( P(r) \) is the Thermal pressure profile of a species.
         - \( n(r) \) is the number density profile of a species.
         - \( k_B \) is the Boltzmann constant (in eV).
     """
@@ -536,7 +578,7 @@ class Temperature(SchneiderProfiles):
         self.Pressure = pressure
         self.GasNumberDensity = gasnumberdensity
         
-        if self.Pressure is None: self.Pressure = Pressure(**kwargs)
+        if self.Pressure is None: self.Pressure = Pressure(**kwargs) * (1 - NonThermalFrac(**kwargs))
         if self.GasNumberDensity is None: self.GasNumberDensity = GasNumberDensity(**kwargs)
             
         super().__init__(**kwargs)
@@ -544,31 +586,45 @@ class Temperature(SchneiderProfiles):
     
     def _real(self, cosmo, r, M, a):
         
-        r_use = np.atleast_1d(r)
-        M_use = np.atleast_1d(M)
-
-        z = 1/a - 1
-
-        R = self.mass_def.get_radius(cosmo, M_use, a)/a #in comoving Mpc
-
-        P   = self.Pressure.real(cosmo, r_use, M, a)
-        n   = self.GasNumberDensity.real(cosmo, r_use, M, a)
+        P   = self.Pressure.real(cosmo, r, M, a)
+        n   = self.GasNumberDensity.real(cosmo, r, M, a)
         
-        prof = P/(n * kb_in_ev)
+        #We'll have instances of n == 0, which isn't a problem so let's ignore
+        #warnings of divide errors, because we know they happen here.
+        #Instead we will fix them by replacing the temperature with 0s,
+        #since there is no gas in those regions to use anyway.
+        with np.errstate(divide = 'ignore', invalid = 'ignore'):
+            prof = P/(n * kb_cgs)
+            prof = np.where(n == 0, 0, prof)
         
-        #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
-
         assert np.all(prof >= 0), "Something went wrong. Temperature is negative in some places"
 
         return prof
     
     
+    def projected(self, cosmo, r, M, a):
+        """
+        Need a custom projected class, because we want the "average temperature"
+        along the line of sight. The "integrated temperature" is not a meaningful
+        physical quantity.
+        """
 
-class ThermalSZ(SchneiderProfiles):
+        P   = self.Pressure.projected(cosmo, r, M, a)
+        n   = self.GasNumberDensity.projected(cosmo, r, M, a)
+
+        #We'll have instances of n == 0, which isn't a problem so let's ignore
+        #warnings of divide errors, because we know they happen here.
+        #Instead we will fix them by replacing the temperature with 0s,
+        #since there is no gas in those regions to use anyway.
+        with np.errstate(divide = 'ignore', invalid = 'ignore'):
+            prof = P/(n * kb_cgs)
+            prof = np.where(n == 0, 0, prof)
+
+        return prof
+    
+    
+
+class ThermalSZ(BaseThermodynamicProfile):
     """
     Class for computing the thermal Sunyaev-Zel'dovich (tSZ) effect profile in halos.
 
@@ -657,10 +713,8 @@ class ThermalSZ(SchneiderProfiles):
         prof  = prof * self.Pgas_to_Pe(cosmo, r_use, M_use, a) #Then convert from gas pressure to electron pressure
         
         #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
+        if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
         
         return prof
     
@@ -687,7 +741,7 @@ class ThermalSZ(SchneiderProfiles):
     
     
     
-class XrayLuminosity(ccl.halos.profiles.HaloProfile):
+class XrayLuminosity(BaseThermodynamicProfile):
     
     
     def __init__(self, temperature = None, gasnumberdensity = None, **kwargs):
@@ -720,9 +774,7 @@ class XrayLuminosity(ccl.halos.profiles.HaloProfile):
         prof = n**2*T
         
         #Handle dimensions so input dimensions are mirrored in the output
-        if np.ndim(r) == 0:
-            prof = np.squeeze(prof, axis=-1)
-        if np.ndim(M) == 0:
-            prof = np.squeeze(prof, axis=0)
+        if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
+        if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
         
         return prof

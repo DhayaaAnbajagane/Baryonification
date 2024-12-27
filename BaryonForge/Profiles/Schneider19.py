@@ -72,7 +72,11 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
 
     """
 
-    def __init__(self, mass_def = ccl.halos.massdef.MassDef(200, 'critical'), 
+    #Define the params used in this model
+    model_param_names      = model_params
+    projection_param_names = projection_params
+
+    def __init__(self, mass_def = ccl.halos.massdef.MassDef(200, 'critical', c_m_relation = 'Diemer15'), 
                  use_fftlog_projection = False, 
                  padding_lo_proj = 0.1, padding_hi_proj = 10, n_per_decade_proj = 10, 
                  xi_mm = None, 
@@ -80,7 +84,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         
         #Go through all input params, and assign Nones to ones that don't exist.
         #If mass/redshift/conc-dependence, then set to 1 if don't exist
-        for m in model_params + projection_params:
+        for m in self.model_param_names + self.projection_param_names:
             if m in kwargs.keys():
                 setattr(self, m, kwargs[m])
             elif ('mu_' in m) or ('nu_' in m) or ('zeta_' in m): #Set mass/red/conc dependence
@@ -96,7 +100,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         self.n_per_decade_proj = n_per_decade_proj 
         
         #Import all other parameters from the base CCL Profile class
-        super(SchneiderProfiles, self).__init__(mass_def = mass_def)
+        super().__init__(mass_def = mass_def)
 
         #Function that returns correlation func at different radii
         self.xi_mm = xi_mm
@@ -138,7 +142,7 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
             Dictionary of model parameters.
         """
         
-        params = {k:v for k,v in vars(self).items() if k in model_params}
+        params = {k:v for k,v in vars(self).items() if k in self.model_param_names}
                   
         return params
         
@@ -270,9 +274,9 @@ class SchneiderProfiles(ccl.halos.profiles.HaloProfile):
         '''
         
         string = f"("
-        for m in model_params:
+        for m in self.model_param_names:
             string += f"{m} = {self.__dict__[m]}, "
-        string += f"xi_mm = {self.xi_mm})"
+        string = string[:-2] + ')'
         return string
         
     def __str_prf__(self):
@@ -963,7 +967,7 @@ class CollisionlessMatter(SchneiderProfiles):
         if np.min(r) < self.r_min_int: 
             warnings.warn(f"Decrease integral lower limit, r_min_int ({self.r_min_int}) < minimum radius ({np.min(r)})", UserWarning)
         if np.max(r) > self.r_max_int: 
-            warnings.warn(f"Increase integral lower limit, r_min_int ({self.r_max_int}) < minimum radius ({np.max(r)})", UserWarning)
+            warnings.warn(f"Increase integral upper limit, r_max_int ({self.r_max_int}) < maximum radius ({np.max(r)})", UserWarning)
 
         #Def radius sampling for doing iteration.
         #And don't check iteration near the boundaries, since we can have numerical errors
