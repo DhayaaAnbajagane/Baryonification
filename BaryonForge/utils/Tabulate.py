@@ -4,10 +4,10 @@ import pyccl as ccl
 from tqdm import tqdm
 from itertools import product
 from scipy import interpolate
+from .misc import destory_Pk
+from .Pixel import ConvolvedProfile
 
-from ..utils.misc import destory_Pk
-
-__all__ = ['_set_parameter', 'TabulatedProfile', 'ParamTabulatedProfile']
+__all__ = ['_set_parameter', '_get_parameter', 'TabulatedProfile', 'ParamTabulatedProfile']
 
 def _set_parameter(obj, key, value):
     """
@@ -59,10 +59,42 @@ def _set_parameter(obj, key, value):
     obj_keys = dir(obj)
     
     for k in obj_keys:
-        if k == key: 
+        if k == key:
             setattr(obj, key, value)
-        elif isinstance(getattr(obj, k), ccl.halos.profiles.HaloProfile):
+        elif isinstance(getattr(obj, k), (ccl.halos.profiles.HaloProfile, ConvolvedProfile, ParamTabulatedProfile)):
             _set_parameter(getattr(obj, k), key, value)
+
+def _get_parameter(obj, key):
+    """
+    Recursively searches an object to get the first instance of the entry with name "key". If
+    there are multiple values then this function will not find them all.
+    Parameters
+    ----------
+    obj : object
+        The object whose attributes are to be searched. This object can contain nested attributes,
+        some of which may be instances of `HaloProfile` or other objects.
+    
+    key : str
+        The name of the attribute to search for within the object. If an attribute matches this name,
+        its value will be returned.
+    
+    Notes
+    -----
+    - This function checks attributes of the given object. The first attribute that matches the specified `key`,
+      will have its value pulled and returned. If an attribute is an instance of `HaloProfile`, the function calls itself
+      recursively to check for the key in that profile and pull the values.
+    See Also
+    --------
+    `getattr` : Built-in function used to get the attribute of an object.
+    """
+
+    obj_keys = dir(obj)
+    res      = []
+    for k in obj_keys:
+        if k == key: 
+            return getattr(obj, key)
+        elif isinstance(getattr(obj, k), (ccl.halos.profiles.HaloProfile, ConvolvedProfile, ParamTabulatedProfile)):
+            return _get_parameter(getattr(obj, k), key)
 
             
 class TabulatedProfile(ccl.halos.profiles.HaloProfile):

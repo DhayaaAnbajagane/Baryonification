@@ -501,7 +501,7 @@ class GasNumberDensity(BaseThermodynamicProfile):
         - The result is converted to the proper units (number per cubic centimeter).
     """
     
-    def __init__(self, gas = None, mean_molecular_weight = 1.15, **kwargs):
+    def __init__(self, gas = None, **kwargs):
         
         self.Gas = gas
         if self.Gas is None: self.Gas = Gas(**kwargs)
@@ -656,6 +656,8 @@ class Temperature(BaseThermodynamicProfile):
             prof = np.where(n == 0, 0, prof)
 
         return prof
+    
+    
     
     
 
