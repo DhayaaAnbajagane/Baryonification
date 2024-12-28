@@ -26,13 +26,65 @@ model_params = ['cdelta', 'eps1', 'nu_eps1', 'eps2', #DM profle param and relaxa
 
 
 class MeadProfiles(A20.AricoProfiles):
-    __doc__ = A20.AricoProfiles.__doc__.replace('AricoProfiles', 'MeadProfiles')
+    __doc__ = A20.AricoProfiles.__doc__.replace('Arico', 'Mead')
 
     #Define the new param names
     model_param_names = model_params
 
 
     def _get_fstar(self, M_use, a):
+        """
+        Compute the stellar fraction and its components for given halo masses and scale factor.
+
+        This method calculates the total stellar fraction (\( f_{\star} \)), 
+        as well as its central (\( f_{\\text{cen}} \)) and satellite (\( f_{\\text{sat}} \)) 
+        components, based on a parametric model that evolves with redshift.
+
+        Parameters
+        ----------
+        M_use : array_like
+            Halo masses, in units of solar masses.
+        a : float
+            Scale factor of the Universe, where \( a = 1 \) corresponds to the present day.
+
+        Returns
+        -------
+        f_str : array_like
+            Total stellar fraction for each input halo mass.
+        f_cen : array_like
+            Central stellar fraction for each input halo mass.
+        f_sat : array_like
+            Satellite stellar fraction for each input halo mass.
+
+        Notes
+        -----
+        The stellar fraction is modeled using a Gaussian function centered on a characteristic 
+        mass (\( M_{\star} \)) with redshift evolution. The model also includes separate 
+        prescriptions for the central and satellite stellar fractions based on the relationship 
+        between the halo mass and the characteristic mass.
+
+        The total stellar fraction (\( f_{\star} \)) is given by:
+
+        .. math::
+
+            f_{\\star} = A_{\\star} \exp \\left( - \\frac{ \\left( \\log_{10} M_{\\text{use}} - \\log_{10} M_{\star} \\right)^2 }{ 2 \\sigma_{\star}^2 } \\right)
+
+        For \( M_{\\text{use}} > M_{\star} \), \( f_{\star} \) is limited to a fraction of \( A_{\star} \).
+
+        The central and satellite components are calculated as:
+
+        .. math::
+
+            f_{\\text{cen}} = f_{\star} \\cdot \\begin{cases} 
+                1 & M_{\\text{use}} < M_{\star} \\\\ 
+                \\left( \\frac{M_{\\text{use}}}{M_{\star}} \\right)^{\\eta} & M_{\\text{use}} > M_{\star}
+            \\end{cases}
+
+            f_{\\text{sat}} = f_{\star} \\cdot \\begin{cases} 
+                0 & M_{\\text{use}} < M_{\star} \\\\ 
+                1 - \\left( \\frac{M_{\\text{use}}}{M_{\star}} \\right)^{\\eta} & M_{\\text{use}} > M_{\star}
+            \\end{cases}
+        """
         
         z     = 1/a - 1
         Astr  = self.A_star + self.nu_A_star * z
@@ -47,50 +99,36 @@ class MeadProfiles(A20.AricoProfiles):
 
 class DarkMatter(MeadProfiles):
     """
-    Class representing the total Dark Matter (DM) profile using the NFW (Navarro-Frenk-White) profile.
+    Class for modeling the dark matter density profile using the NFW (Navarro-Frenk-White) framework.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation of the 
-    dark matter profile based on the NFW model. It includes a custom `_real` method for calculating 
-    the real-space dark matter density profile, considering factors like the concentration-mass 
-    relation and truncation radius.
+    This class extends `MeadProfiles` to compute the dark matter density profile, incorporating 
+    flexible concentration-mass relations and a truncated profile at the spherical overdensity radius.
 
-    See `MeadProfiles` for more docstring details.
+    Parameters
+    ----------
+    None (inherits all parameters from `MeadProfiles`).
 
     Notes
     -----
-    The `DarkMatter` class calculates the dark matter density profile using the NFW model with a 
-    modification for truncation at a specified radius set by `epsilon`. This profile accounts for the concentration-mass 
-    relation, which can be provided as `cdelta` during class init. If none is provided,
-    we use the `ConcentrationDiemer15` model.
+    The dark matter profile is calculated using the NFW formula, which depends on the halo's 
+    mass and concentration. The normalization is determined analytically to ensure that the 
+    total mass within the virial radius matches the input halo mass.
 
-    The profile also includes an additional exponential cutoff to prevent numerical overflow and 
-    artifacts at large radii.
-
-    The dark matter density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{DM}}(r) = \\frac{\\rho_c}{\\frac{r}{r_s} \\left(1 + \\frac{r}{r_s}\\right)^2} 
-        \\cdot \\frac{1}{\\left(1 + \\frac{r}{r_t}\\right)^2}
+        \\rho(r) = 
+        \\begin{cases} 
+        \\frac{\\rho_c}{(r/r_s)(1 + r/r_s)^2}, & r \\leq R_{200c} \\\\ 
+        0, & r > R_{200c}
+        \\end{cases}
+
 
     where:
-
-    - :math:`\\rho_c` is the characteristic density of the halo.
-    - :math:`r_s` is the scale radius of the halo, defined as :math:`r_s = R/c`.
-    - :math:`r_t = \\epsilon \\cdot R` is the truncation radius, controlled by the parameter `epsilon`.
-    - :math:`r` is the radial distance.
-
-
-    Examples
-    --------
-    Create a `DarkMatter` profile and compute the density at specific radii:
-
-    >>> dm_profile = DarkMatter(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = dm_profile.real(cosmo, r, M, a)
+    - \( \\rho_c \) is the characteristic density, computed using the halo mass.
+    - \( r_s \) is the scale radius, defined as \( R/c \), where \( R \) is the virial radius and \( c \) 
+    is the concentration parameter.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -133,66 +171,38 @@ class DarkMatter(MeadProfiles):
     
 
 class TwoHalo(S19.TwoHalo, MeadProfiles):
-    __doc__ = S19.TwoHalo.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
+    __doc__ = S19.TwoHalo.__doc__.replace('Schneider', 'Mead')
 
 
 class Stars(MeadProfiles):
     """
-    Class representing the exponential stellar mass profile.
+    Class for modeling the stellar density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of an exponential stellar mass profile. It calculates the real-space stellar mass 
-    density profile, using parameters to account for factors like stellar mass fraction 
-    and halo radius.
+    This class extends `MeadProfiles` to compute the stellar density profile of the central
+    galaxy. The stellar fraction is a simple Gaussian in halo mass. While Mead20 uses a
+    delta function for their star profile, we use a simple exponential, following Arico and Schneider.
 
-    See `SchneiderProfiles` for more docstring details.
 
     Notes
     -----
-    The `Stars` class models the stellar mass distribution with an exponential profile, 
-    modulated by parameters such as `eta`, `tau`, `A`, and `M1`. These parameters 
-    adjust the stellar mass fraction as a function of halo mass. The profile also applies 
-    an exponential cutoff controlled by the `epsilon_h` parameter to define the 
-    characteristic radius of the stellar distribution.
-
-    The stellar mass density profile is given by:
+    - The stellar profile is computed based on the fraction of stars in the halo (\( f_{\star} \)), 
+      divided into central and satellite components.
+    - The central component is modeled using a Gaussian distribution centered on the halo center, 
+      characterized by the scale radius \( R_h \).
+    
+    The density profile is given by:
 
     .. math::
 
-        \\rho_\\star(r) = \\frac{f_{\\text{cga}} M_{\\text{tot}}}{4 \\pi^{3/2} R_h} \\frac{1}{r^2} 
-                          \\exp\\left(-\\frac{r^2}{4 R_h^2}\\right) 
+        \\rho_{\star}(r) = \\frac{f_{\\text{cen}} M}{4 \\pi^{3/2} R_h} 
+        \\cdot \\frac{1}{r^2} \\cdot \\exp\\left(- \\frac{r^2}{4 R_h^2}\\right)
 
     where:
-
-    - :math:`f_{\\text{cga}}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\text{cga}} = 2 A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau + \\tau_\\delta} 
-          + \\left(\\frac{M}{M_1}\\right)^{\\eta + \\eta_\\delta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`R_h = \\epsilon_h R` is the characteristic scale radius of the stellar distribution.
-    - :math:`r` is the radial distance.
-
-    The class overrides specific `precision_fftlog` settings to prevent ringing artifacts 
-    in the profiles. This is achieved by setting extreme padding values.
-
-    An additional exponential cutoff is included to prevent numerical overflow and artifacts 
-    at large radii.
-
-    Examples
-    --------
-    Create a `Stars` profile and compute the density at specific radii:
-
-    >>> stars_profile = Stars(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = stars_profile.real(cosmo, r, M, a)
+    - \( f_{\\text{cen}} \) is the fraction of stars in the central component.
+    - \( M \) is the halo mass.
+    - \( R_h \) is the characteristic scale radius, proportional to the halo virial radius.
     """
-    
+
     def __init__(self, **kwargs):
         
         super().__init__(**kwargs)
@@ -224,61 +234,35 @@ class Stars(MeadProfiles):
     
 
 class BoundGas(MeadProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the bound gas density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+    This class extends `MeadProfiles` to compute the density profile of bound gas in halos. The bound gas profile accounts 
+    depends on the baryon fraction, stellar fraction, and halo properties such as mass and concentration.
 
-    See `SchneiderProfiles` for more docstring details.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The bound gas fraction is calculated as the difference between the total baryon fraction and the stellar fraction, 
+      scaled by a parametric model that includes mass dependence.
+    - The radial density profile is normalized on a per-halo basis to ensure physical consistency, integrating the profile 
+      within the virial radius.
+    - The profile follows a parametric form, which depends on the concentration parameter and redshift-dependent factors 
+      like the effective gamma \( \Gamma \).
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{gas}}(r) = f_{\\text{bnd}} M 
+        \\cdot \\frac{\\left[\\ln(1 + x) / x\\right]^{1 / (\\Gamma - 1)}}{N}
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( f_{\\text{bnd}} \) is the bound gas fraction, determined from the baryon and stellar fractions.
+    - \( M \) is the halo mass.
+    - \( x = r / r_s \), where \( r_s = R / c \) is the scale radius.
+    - \( N \) is the normalization factor ensuring the profile integrates to the bound gas mass within the virial radius.
+    - \( \\Gamma \) is a redshift-dependent parameter that modifies the profile shape.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -336,61 +320,35 @@ class BoundGas(MeadProfiles):
     
 
 class EjectedGas(MeadProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the density profile of ejected gas in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
-
-    See `SchneiderProfiles` for more docstring details.
+    This class extends `MeadProfiles` to compute the density profile of gas that has been ejected 
+    from halos due to feedback processes. The profile accounts for the escape radius, redshift-dependent 
+    parameters, and the baryon fraction of the halo. This follows Omori+23 (https://arxiv.org/pdf/2212.07420)
+    who use the methods in Schneider & Teyssier 2015. In Mead20, the Ejected Gas is included as an
+    addition to the two-halo term, which is not the approach used here.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The ejected gas fraction (\( f_{\\text{ej}} \)) is calculated as the difference between the 
+      total baryon fraction and the sum of the stellar fraction and bound gas fraction.
+    - The profile includes an escape radius (\( R_{\\text{esc}} \)) derived from the halo's escape velocity and 
+      cosmological parameters, which limits the spatial extent of the ejected gas.
+    - The radial distribution of ejected gas is modeled as a Gaussian profile, normalized by the total ejected mass.
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{ej}}(r) = \\frac{f_{\\text{ej}} M}{(2\\pi R_{\\text{ej}}^2)^{3/2}} 
+        \\cdot \\exp\\left(-\\frac{r^2}{2R_{\\text{ej}}^2}\\right)
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( f_{\\text{ej}} \) is the ejected gas fraction.
+    - \( M \) is the halo mass.
+    - \( R_{\\text{ej}} \) is the ejection radius, determined according to the ejection fraction and 
+      a maxwellian velocity distribution for the gas.
     """
 
     _safe_Pchip_minimize = A20.ModifiedDarkMatter._safe_Pchip_minimize
@@ -431,9 +389,15 @@ class EjectedGas(MeadProfiles):
 
 
 class Gas(MeadProfiles):
-    '''
-    Convenience class that combines the Bound, Ejected, and Reaccreted gas components
-    '''
+    """
+    Convenience class for combining bound and ejected gas components.
+
+    This class serves as a unified interface for gas profiles in halos, combining the contributions 
+    from bound gas (`BoundGas`) and ejected gas (`EjectedGas`). It simplifies calculations where 
+    the total gas profile is required, leveraging the underlying logic and methods of the individual 
+    gas components.
+    """
+
     def __init__(self, **kwargs): self.myprof = BoundGas(**kwargs) + EjectedGas(**kwargs)
     def __getattr__(self, name):  return getattr(self.myprof, name)
     
@@ -445,50 +409,43 @@ class Gas(MeadProfiles):
 
 class CollisionlessMatter(MeadProfiles):
     """
-    Class representing the total Dark Matter (DM) profile using the NFW (Navarro-Frenk-White) profile.
+    Class for modeling the density profile of collisionless matter in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation of the 
-    dark matter profile based on the NFW model. It includes a custom `_real` method for calculating 
-    the real-space dark matter density profile, considering factors like the concentration-mass 
-    relation and truncation radius.
-
-    See `MeadProfiles` for more docstring details.
+    This class extends `MeadProfiles` to compute the density profile of collisionless matter, 
+    including dark matter and satellite components. The profile accounts for modifications to 
+    the concentration parameter based on baryonic feedback effects and redshift evolution.
 
     Notes
     -----
-    The `DarkMatter` class calculates the dark matter density profile using the NFW model with a 
-    modification for truncation at a specified radius set by `epsilon`. This profile accounts for the concentration-mass 
-    relation, which can be provided as `cdelta` during class init. If none is provided,
-    we use the `ConcentrationDiemer15` model.
+    - The concentration parameter is adjusted using a feedback-dependent factor that depends on 
+      the bound gas fraction (\( f_{\\text{bnd}} \)) and redshift.
+    - The density profile follows the NFW formula, with normalization based on the halo mass 
+      and concentration.
+    - The fraction of baryons and stars (\( f_{\\text{bar}} \) and \( f_{\\text{sat}} \)) is 
+      incorporated to rescale the characteristic density, ensuring proper mass accounting.
 
-    The profile also includes an additional exponential cutoff to prevent numerical overflow and 
-    artifacts at large radii.
-
-    The dark matter density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{DM}}(r) = \\frac{\\rho_c}{\\frac{r}{r_s} \\left(1 + \\frac{r}{r_s}\\right)^2} 
-        \\cdot \\frac{1}{\\left(1 + \\frac{r}{r_t}\\right)^2}
+        \\rho(r) = \\frac{\\rho_c}{(r/r_s)(1 + r/r_s)^2}
 
     where:
+    - \( \\rho_c \) is the characteristic density, adjusted for baryonic effects and normalized 
+      by the halo mass.
+    - \( r_s = R / c \) is the scale radius, with \( c \) being the concentration parameter.
 
-    - :math:`\\rho_c` is the characteristic density of the halo.
-    - :math:`r_s` is the scale radius of the halo, defined as :math:`r_s = R/c`.
-    - :math:`r_t = \\epsilon \\cdot R` is the truncation radius, controlled by the parameter `epsilon`.
-    - :math:`r` is the radial distance.
+    The concentration parameter is modified as:
 
+    .. math::
 
-    Examples
-    --------
-    Create a `DarkMatter` profile and compute the density at specific radii:
+        c = c_{\\text{original}} \\cdot \\left( 1 + \\epsilon_1 + 
+        (\\epsilon_2 - \\epsilon_1) \\frac{f_{\\text{bnd}}}{f_{\\text{bar}}} \\right)
 
-    >>> dm_profile = DarkMatter(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = dm_profile.real(cosmo, r, M, a)
+    where:
+    - \( \\epsilon_1 \) and \( \\epsilon_2 \) are redshift-dependent parameters.
+    - \( f_{\\text{bnd}} \) is the bound gas fraction.
+    - \( f_{\\text{bar}} \) is the total baryon fraction.
     """
 
     def _modify_concentration(self, cosmo, c, M, a):
@@ -543,21 +500,84 @@ class CollisionlessMatter(MeadProfiles):
         return prof
 
 
-class DarkMatterOnly(S19.DarkMatterOnly, MeadProfiles):
+class DarkMatterOnly(DarkMatter):
+    """
+    For Mead20, the DarkMatterOnly model includes just an NFW profile.
+    There is no two-halo term. This class is simply a copy of the `DarkMatter` class.
+    See that class for more details
+    """
 
-    __doc__ = S19.DarkMatterOnly.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
-
-    def __init__(self, darkmatter = None, **kwargs):
-        
-        self.DarkMatter = darkmatter
-        self.TwoHalo    = TwoHalo(**kwargs) * 0 #Should not add 2-halo in Arico method
-
-        if self.DarkMatter is None: self.DarkMatter = DarkMatter(**kwargs)
-        MeadProfiles.__init__(self, **kwargs)
 
 class DarkMatterBaryon(S19.DarkMatterBaryon, MeadProfiles):
 
-    __doc__ = S19.DarkMatterBaryon.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
+    """
+    Class representing a combined dark matter and baryonic matter profile.
+
+    This class is derived from the `MeadProfiles` class and provides an implementation 
+    that combines the contributions from dark matter, gas, stars, and collisionless matter 
+    to compute the total density profile. It ensures mass conservation and accounts for both 
+    dark matter and baryonic components. It does not include a two-halo term. 
+    See `DarkMatterBaryonwithLSS` for a convenience class that includes the TwoHalo. 
+
+    Parameters
+    ----------
+    gas : Gas, optional
+        An instance of the `Gas` class defining the gas profile. If not provided, a default 
+        `Gas` object is created using `kwargs`.
+    stars : Stars, optional
+        An instance of the `Stars` class defining the stellar profile. If not provided, a default 
+        `Stars` object is created using `kwargs`.
+    collisionlessmatter : CollisionlessMatter, optional
+        An instance of the `CollisionlessMatter` class defining the profile that combines dark matter, 
+        gas, and stars. If not provided, a default `CollisionlessMatter` object is created using `kwargs`.
+    darkmatter : DarkMatter, optional
+        An instance of the `DarkMatter` class defining the NFW profile for dark matter. If not provided, 
+        a default `DarkMatter` object is created using `kwargs`.
+    **kwargs
+        Additional keyword arguments passed to initialize the `Gas`, `Stars`, `CollisionlessMatter`, 
+        `DarkMatter`, and `TwoHalo` profiles, as well as other parameters from `SchneiderProfiles`.
+
+    Notes
+    -----
+    The `DarkMatterBaryon` class models the total matter density profile by combining 
+    contributions from collisionless matter, gas, stars, dark matter, and the two-halo term. 
+    This comprehensive approach accounts for the interaction and distribution of both dark 
+    matter and baryonic matter within halos and across neighboring halos.
+
+    **Calculation Steps:**
+
+    1. **Normalization of Dark Matter Baryon**: To ensure mass conservation, the one-halo term is 
+       normalized so that the dark matter-baryon matches the dark matter-only profile
+         at large radii. The normalization factor is calculated as:
+
+       .. math::
+
+           \\text{Factor} = \\frac{M_{\\text{DMO}}}{M_{\\text{DMB}}}
+
+       where:
+
+       - :math:`M_{\\text{DMO}}` is the total mass from the dark matter-only profile.
+       - :math:`M_{\\text{DMB}}` is the total mass from the combined dark matter and baryon profile.
+
+    2. **Total Density Profile**: The total density profile is computed by summing the contributions 
+       from the collisionless matter, stars, and gas, scaled by the normalization factor:
+
+       .. math::
+
+           \\rho_{\\text{total}}(r) = \\rho_{\\text{CLM}}(r) \\cdot \\text{Factor} + \\rho_{\\text{stars}}(r) \\cdot \\text{Factor} + \\rho_{\\text{gas}}(r) \\cdot \\text{Factor}
+
+       where:
+
+       - :math:`\\rho_{\\text{CLM}}(r)` is the density from the collisionless matter profile.
+       - :math:`\\rho_{\\text{stars}}(r)` is the stellar density profile.
+       - :math:`\\rho_{\\text{gas}}(r)` is the gas density profile.
+
+    This method ensures that both dark matter and baryonic matter are accounted for, 
+    providing a realistic representation of the total matter distribution.
+
+    See `SchneiderProfiles`, `Gas`, `Stars`, `CollisionlessMatter`, `DarkMatter`
+    classes for more details on the underlying profiles and parameters.
+    """
 
     def __init__(self, gas = None, stars = None, collisionlessmatter = None, darkmatter = None, **kwargs):
         
@@ -577,7 +597,7 @@ class DarkMatterBaryon(S19.DarkMatterBaryon, MeadProfiles):
 
 class DarkMatterOnlywithLSS(S19.DarkMatterOnly, MeadProfiles):
 
-    __doc__ = S19.DarkMatterOnly.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
+    __doc__ = S19.DarkMatterOnly.__doc__.replace('Schneider', 'Mead')
 
     def __init__(self, darkmatter = None, twohalo = None, **kwargs):
         
@@ -592,7 +612,7 @@ class DarkMatterOnlywithLSS(S19.DarkMatterOnly, MeadProfiles):
 
 class DarkMatterBaryonwithLSS(S19.DarkMatterBaryon, MeadProfiles):
 
-    __doc__ = S19.DarkMatterBaryon.__doc__.replace('SchneiderProfiles', 'MeadProfiles')
+    __doc__ = S19.DarkMatterBaryon.__doc__.replace('Schneider', 'Mead')
 
     def __init__(self, gas = None, stars = None, collisionlessmatter = None, darkmatter = None, twohalo = None, **kwargs):
         
@@ -613,47 +633,36 @@ class DarkMatterBaryonwithLSS(S19.DarkMatterBaryon, MeadProfiles):
 
 class Temperature(MeadProfiles):
     """
-    Class for computing the temperature profile in halos.
+    Class for modeling the temperature profile of halos.
 
-    The temperature is derived from the thermal pressure and the number density profiles, 
-    of a species using the ideal gas law. The temperature profile is important for understanding 
-    the thermal state of the intracluster medium and its impact on various astrophysical processes.
-
-    For this model to be correct, the input pressure must be the *thermal pressure*, i.e. the
-    non-thermal pressure must have already been accounted for in the model passed to this class.
-
-
-    Parameters
-    ----------
-    pressure : Pressure, optional
-        An instance of the `Pressure` class defining the thermal gas pressure profile. 
-        If non-thermal pressure is relevant for your problem, it must be included in this
-        profile; see `Pressure` or `NonThermalFrac` for more details.
-        If this parameter is not provided, a default `Pressure` object is created using `kwargs`.
-    gasnumberdensity : GasNumberDensity, optional
-        An instance of the `GasNumberDensity` class defining the gas number density profile. 
-        If not provided, a default `GasNumberDensity` object is created using `kwargs`.
-    **kwargs
-        Additional keyword arguments passed to initialize the `Pressure`, `GasNumberDensity`, 
-        and other parameters from `SchneiderProfiles`.
+    This class extends `MeadProfiles` to compute the temperature profile of gas in halos, 
+    based on the gravitational potential and the mean molecular weight of the gas. 
 
     Notes
     -----
-    The `Temperature` class computes the temperature profile of the gas in halos by dividing 
-    the gas pressure by the gas number density and the Boltzmann constant. This calculation 
-    assumes the ideal gas law, which relates pressure, number density, and temperature.
+    - The real-space temperature profile is derived from the characteristic energy scale, 
+      assuming hydrostatic equilibrium.
 
-    The gas temperature \( T \) is calculated using:
+    The real-space temperature profile is given by:
 
     .. math::
 
-        T(r) = \\frac{P}(r)}{n(r) \\cdot k_B}
+        T(r) = T_0 \\cdot \\frac{\\ln(1 + r/r_s)}{r/r_s}
 
     where:
-        - \( P(r) \) is the Thermal pressure profile of a species.
-        - \( n(r) \) is the number density profile of a species.
-        - \( k_B \) is the Boltzmann constant (in eV).
+    - \( T_0 \) is the characteristic temperature scale, proportional to the gravitational 
+      potential of the halo:
+      
+      .. math::
+
+          T_0 = \\frac{G M \\mu m_p}{R} \\cdot \\frac{1}{k_B}
+
+      \( G \) is the gravitational constant, \( M \) is the halo mass, \( \mu \) is the mean molecular weight, 
+      \( m_p \) is the proton mass, and \( k_B \) is the Boltzmann constant.
+    - \( r_s \) is the scale radius, defined as \( R / c \), where \( R \) is the virial radius and \( c \) is 
+      the concentration parameter.
     """
+
     
     def _real(self, cosmo, r, M, a):
         
@@ -687,10 +696,6 @@ class Temperature(MeadProfiles):
     
     
     def projected(self, cosmo, r, M, a):
-        '''
-        Rewrite projected function to include a normalization 
-        because we want "averaged" (not summed) temperature when projecting.
-        '''
 
         r_max = self.padding_hi_proj * np.max(r)
         if self.proj_cutoff is not None: r_max = self.proj_cutoff
@@ -700,61 +705,46 @@ class Temperature(MeadProfiles):
 
 
 class Pressure(MeadProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the pressure profile of gas in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+    This class extends `MeadProfiles` to compute the pressure profile, incorporating contributions 
+    from both bound and ejected gas components. The pressure is calculated as the product of the 
+    gas density and temperature, with separate terms for the bound and ejected gas phases.
 
-    See `SchneiderProfiles` for more docstring details.
+    Parameters
+    ----------
+    boundgas : BoundGas, optional
+        Instance of the `BoundGas` class representing the bound gas component.
+        If not provided, a default `BoundGas` object is created.
+    ejectedgas : EjectedGas, optional
+        Instance of the `EjectedGas` class representing the ejected gas component.
+        If not provided, a default `EjectedGas` object is created.
+    temperature : Temperature, optional
+        Instance of the `Temperature` class representing the gas temperature.
+        If not provided, a default `Temperature` object is created.
+    **kwargs
+        Additional arguments passed to initialize the parent `MeadProfiles` class and associated components.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The pressure profile is computed as the sum of two components:
+        1. The bound gas component, which depends on the real-space gas density and temperature.
+        2. The ejected gas component, which uses a redshift-dependent temperature normalization.
+    - The gas number density is derived from the mass density by dividing by the mean molecular weight and proton mass.
 
-    The gas density profile is given by:
+    The pressure profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        P(r) = P_{\\text{bound}}(r) + P_{\\text{ejected}}(r)
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( P_{\\text{bound}}(r) = n_{\\text{bound}}(r) \\cdot T_{\\text{bound}}(r) \\cdot k_B \)
+    - \( P_{\\text{ejected}}(r) = n_{\\text{ejected}}(r) \\cdot T_{\\text{ejected}}(r) \\cdot k_B \)
+    - \( n(r) \) is the number density of gas.
+    - \( T(r) \) is the temperature of the gas.
+    - \( k_B \) is the Boltzmann constant.
     """
 
     def __init__(self, boundgas = None, ejectedgas = None, temperature = None, **kwargs):

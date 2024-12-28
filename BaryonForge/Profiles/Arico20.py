@@ -28,48 +28,7 @@ model_params = ['cdelta', 'a', 'n', #DM profle params and relaxation params
 
 
 class AricoProfiles(S19.SchneiderProfiles):
-    """
-    Base class for defining halo density profiles based on Schneider et al. models.
-
-    This class extends the `ccl.halos.profiles.HaloProfile` class and provides 
-    additional functionality for handling different halo density profiles. It allows 
-    for custom real-space projection methods, control over parameter initialization, 
-    and adjustments to the Fourier transform settings to minimize artifacts.
-
-    Parameters
-    ----------
-    use_fftlog_projection : bool, optional
-        If True, the default FFTLog projection method is used for the `projected` method. 
-        If False, a custom real-space projection is employed. Default is False.
-    padding_lo_proj : float, optional
-        The lower padding factor for the projection integral in real-space. Default is 0.1.
-    padding_hi_proj : float, optional
-        The upper padding factor for the projection integral in real-space. Default is 10.
-    n_per_decade_proj : int, optional
-        Number of integration points per decade in the real-space projection integral. Default is 10.
-    xi_mm : callable, optional
-        A function that returns the matter-matter correlation function at different radii.
-        Default is None, in which case we use the CCL inbuilt model.
-    **kwargs
-        Additional keyword arguments for setting specific parameters of the profile. If a parameter 
-        is not specified, defaults are assigned based on its type (e.g., mass/redshift/conc-dependence).
-
-    Attributes
-    ----------
-    model_params : dict
-        A dictionary containing all model parameters and their values.
-    precision_fftlog : dict
-        Dictionary with precision settings for the FFTLog convolution. Can be modified 
-        directly or using the update_precision_fftlog() method.
-
-    Methods
-    -------
-    real(cosmo, r, M, a)
-        Computes the real-space density profile.
-    projected(cosmo, r, M, a)
-        Computes the projected density profile.
-
-    """
+    __doc__ = S19.SchneiderProfiles.__doc__.replace('Schneider', 'Arico')
 
     #Define the new param names
     model_param_names = model_params
@@ -95,32 +54,36 @@ class AricoProfiles(S19.SchneiderProfiles):
     
     def _get_gas_params(self, M, z):
         """
-        Computes gas-related parameters based on the mass and redshift.
-        Will use concentration is cdelta is specified during Class initialization.
-        Uses mass/redshift slopes provided during class initialization.
+        Compute gas parameters based on halo mass and redshift.
+
+        This method calculates key gas parameters, including the slope (\( \\beta \)) and the 
+        inner and outer radius ratios (\( \\theta_{\\text{inn}} \) and \( \\theta_{\\text{out}} \)), 
+        which are used to model the gas profile in halos.
 
         Parameters
         ----------
         M : array_like
-            Halo mass or array of halo masses.
-        z : float
-            Redshift.
+            Halo masses, in units of solar masses.
+        z : array_like
+            Redshift values corresponding to the input halo masses.
 
         Returns
         -------
-        beta : ndarray
-            Small-scale gas slope.
-        theta_out : ndarray
-            Ejection radius.
-        theta_inn : ndarray
-            Core radius parameter.
-        delta : ndarray
-            Large-scale slope.
-        gamma : ndarray
-            Intermediate-scale slope.
+        beta : array_like
+            The slope parameter for each halo mass, defined as:
+
+            .. math::
+
+                \\beta = 3 - \\left(\\frac{M_{\\text{inn}}}{M}\\right)^{\mu}
+
+            where \( M_{\\text{inn}} \) and \( \mu \) are model parameters.
+        theta_out : array_like
+            The outer temperature ratio, set to a constant value for all masses.
+        theta_inn : array_like
+            The inner temperature ratio, set to a constant value for all masses.
         """
         
-        beta = 3 - (self.M_inn/M)**self.mu * np.ones_like(M)
+        beta = 3 - np.power(self.M_inn/M, self.mu) * np.ones_like(M)
         
         #Use M_c as the mass-normalization for simplicity sake
         theta_out = self.theta_out * np.ones_like(M) 
@@ -134,6 +97,45 @@ class AricoProfiles(S19.SchneiderProfiles):
     
 
     def _get_star_frac(self, M, z, satellite = False):
+        """
+        Compute the stellar fraction as a function of halo mass and redshift.
+
+        This method calculates the stellar fraction, \( f_{\\text{CG}} \), using a parametric model 
+        based on fitting functions from Behroozi et al. (2013) and param values from Kravtsov et al. (2018). 
+        The model accounts for redshift evolution and includes an optional modification for satellite galaxies.
+
+        Parameters
+        ----------
+        M : array_like
+            Halo masses, in units of solar masses.
+        z : array_like
+            Redshift values corresponding to the input halo masses.
+        satellite : bool, optional
+            If True, modifies the stellar fraction parameters for satellite galaxies. 
+            Default is False.
+
+        Returns
+        -------
+        fCG : array_like
+            The computed stellar fraction for each input halo mass and redshift.
+
+        Notes
+        -----
+        - The model parameters are derived from the fitting functions in Behroozi et al. (2013) 
+        and include terms for redshift evolution and halo mass dependence.
+        - For satellite galaxies, all parameters are adjusted using a scaling factor, `alpha_sat`.
+        - The stellar fraction is computed as:
+
+        .. math::
+
+            f_{\\text{CG}} = \epsilon \\cdot \frac{M_1}{M} 
+            \\cdot 10^{g(x) - g(0)}
+
+        where:
+        - \( x = \log_{10}(M / M_1) \)
+        - \( g(x) \) is a complex function of \( x \), \(\alpha\), \(\delta\), and \(\gamma\).
+        - \(\epsilon\), \(M_1\), \(\alpha\), \(\delta\), and \(\gamma\) are redshift-dependent parameters.
+        """
 
         #Based on fitting function of Behroozi+2013 and data from Kravtsov+2018
         #see Eq A16-17 in https://arxiv.org/pdf/1911.08471
@@ -174,6 +176,7 @@ class AricoProfiles(S19.SchneiderProfiles):
 
         return fCG    
 
+
     def __str_par__(self):
         '''
         String with all input params and their values
@@ -188,50 +191,31 @@ class AricoProfiles(S19.SchneiderProfiles):
 
 class DarkMatter(AricoProfiles):
     """
-    Class representing the total Dark Matter (DM) profile using the NFW (Navarro-Frenk-White) profile.
+    Class for modeling the dark matter density profile using the NFW (Navarro-Frenk-White) framework.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation of the 
-    dark matter profile based on the NFW model. It includes a custom `_real` method for calculating 
-    the real-space dark matter density profile, considering factors like the concentration-mass 
-    relation and truncation radius.
-
-    See `AricoProfiles` for more docstring details.
+    This class extends `AricoProfiles` to compute the dark matter density profile, incorporating 
+    flexible concentration-mass relations and a truncated profile at large radii. 
 
     Notes
     -----
-    The `DarkMatter` class calculates the dark matter density profile using the NFW model with a 
-    modification for truncation at a specified radius set by `epsilon`. This profile accounts for the concentration-mass 
-    relation, which can be provided as `cdelta` during class init. If none is provided,
-    we use the `ConcentrationDiemer15` model.
+    The dark matter profile is calculated using the NFW formula, which depends on the halo's 
+    mass and concentration. The normalization is determined analytically to ensure that the 
+    total mass within the virial radius matches the input halo mass.
 
-    The profile also includes an additional exponential cutoff to prevent numerical overflow and 
-    artifacts at large radii.
-
-    The dark matter density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{DM}}(r) = \\frac{\\rho_c}{\\frac{r}{r_s} \\left(1 + \\frac{r}{r_s}\\right)^2} 
-        \\cdot \\frac{1}{\\left(1 + \\frac{r}{r_t}\\right)^2}
+        \\rho(r) = 
+        \\begin{cases} 
+        \\frac{\\rho_c}{(r/r_s)(1 + r/r_s)^2}, & r \\leq R \\\\ 
+        0, & r > R
+        \\end{cases}
 
     where:
-
-    - :math:`\\rho_c` is the characteristic density of the halo.
-    - :math:`r_s` is the scale radius of the halo, defined as :math:`r_s = R/c`.
-    - :math:`r_t = \\epsilon \\cdot R` is the truncation radius, controlled by the parameter `epsilon`.
-    - :math:`r` is the radial distance.
-
-
-    Examples
-    --------
-    Create a `DarkMatter` profile and compute the density at specific radii:
-
-    >>> dm_profile = DarkMatter(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = dm_profile.real(cosmo, r, M, a)
+    - \( \\rho_c \) is the characteristic density, computed using the halo mass.
+    - \( r_s \) is the scale radius, defined as \( R/c \), where \( R \) is the virial radius and \( c \) 
+    is the concentration parameter.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -277,61 +261,35 @@ class TwoHalo(S19.TwoHalo, AricoProfiles):
 
 class Stars(AricoProfiles):
     """
-    Class representing the exponential stellar mass profile.
+    Class for modeling the stellar density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of an exponential stellar mass profile. It calculates the real-space stellar mass 
-    density profile, using parameters to account for factors like stellar mass fraction 
-    and halo radius.
-
-    See `SchneiderProfiles` for more docstring details.
+    This class extends `AricoProfiles` to compute the density profile of stars within halos. 
+    The profile accounts for the stellar fraction, redshift evolution, and a normalized 
+    radial distribution.
 
     Notes
     -----
-    The `Stars` class models the stellar mass distribution with an exponential profile, 
-    modulated by parameters such as `eta`, `tau`, `A`, and `M1`. These parameters 
-    adjust the stellar mass fraction as a function of halo mass. The profile also applies 
-    an exponential cutoff controlled by the `epsilon_h` parameter to define the 
-    characteristic radius of the stellar distribution.
-
-    The stellar mass density profile is given by:
+    - The radial profile is modeled with a power-law dependence and an exponential cutoff, 
+      normalized to integrate to the stellar mass within the halo.
+    - The stellar fraction is computed using the `_get_star_frac` method, which depends on 
+      halo mass and redshift.
+    
+    The stellar density profile is given by:
 
     .. math::
 
-        \\rho_\\star(r) = \\frac{f_{\\text{cga}} M_{\\text{tot}}}{4 \\pi^{3/2} R_h} \\frac{1}{r^2} 
-                          \\exp\\left(-\\frac{r^2}{4 R_h^2}\\right) 
+        \\rho_{\\star}(r) = \\frac{f_{\\text{cga}} M}{R_h r^{\\alpha_g}} 
+        \\cdot \\exp\\left(-\\frac{r^2}{4 R_h^2}\\right) 
+        \\cdot \\frac{1}{N}
 
     where:
-
-    - :math:`f_{\\text{cga}}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\text{cga}} = 2 A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau + \\tau_\\delta} 
-          + \\left(\\frac{M}{M_1}\\right)^{\\eta + \\eta_\\delta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`R_h = \\epsilon_h R` is the characteristic scale radius of the stellar distribution.
-    - :math:`r` is the radial distance.
-
-    The class overrides specific `precision_fftlog` settings to prevent ringing artifacts 
-    in the profiles. This is achieved by setting extreme padding values.
-
-    An additional exponential cutoff is included to prevent numerical overflow and artifacts 
-    at large radii.
-
-    Examples
-    --------
-    Create a `Stars` profile and compute the density at specific radii:
-
-    >>> stars_profile = Stars(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = stars_profile.real(cosmo, r, M, a)
+    - \( f_{\\text{cga}} \) is the stellar fraction at a given halo mass and redshift.
+    - \( M \) is the halo mass.
+    - \( R_h \) is the scale radius, proportional to the halo virial radius.
+    - \( \\alpha_g \) is the power-law slope parameter.
+    - \( N \) is the numerically computed normalization factor, computed to ensure mass conservation.
     """
-    
+
     def __init__(self, **kwargs):
         
         super().__init__(**kwargs)
@@ -370,61 +328,43 @@ class Stars(AricoProfiles):
 
 
 class BoundGas(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the bound gas density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+    This class extends `AricoProfiles` to compute the density profile of bound gas within halos.
+    This follows the updated model from https://arxiv.org/pdf/2009.14225 rather than the original
+    model.
 
-    See `SchneiderProfiles` for more docstring details.
+    Parameters
+    ----------
+    None (inherits all parameters from `AricoProfiles`).
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - Radial dependence is modeled using two scale radii:
+        1. \( R_{\\text{co}} \): Core radius, controlling the central density slope.
+        2. \( R_{\\text{ej}} \): Outer radius, controlling the cutoff.
+    - The bound gas fraction (\( f_{\\text{bg}} \)) is derived by subtracting the contributions of 
+      stellar and ejected gas fractions from the total baryon fraction.
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{bg}}(r) = 
+        \\begin{cases} 
+        \\frac{f_{\\text{bg}} M}{N} 
+        \\cdot \\frac{1}{(1 + u)^{\\beta}} 
+        \\cdot \\frac{1}{(1 + v^2)^2}, & r \\leq R \\\\ 
+        0, & r > R
+        \\end{cases}
+
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( u = r / R_{\\text{co}} \), \( v = r / R_{\\text{ej}} \)
+    - \( R_{\\text{co}} = \\theta_{\\text{inn}} R \), \( R_{\\text{ej}} = \\theta_{\\text{out}} R \)
+    - \( \\beta \) is the slope parameter, and \( N \) is the normalization factor.
+    - R is the spherical overdensity radius of the halo
     """
 
     def _real(self, cosmo, r, M, a):
@@ -486,61 +426,34 @@ class BoundGas(AricoProfiles):
     
 
 class EjectedGas(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the ejected gas density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
-
-    See `SchneiderProfiles` for more docstring details.
+    This class extends `AricoProfiles` to compute the density profile of gas that has been 
+    ejected from halos due to feedback processes, such as supernovae or AGN activity. 
+    The profile is a simple Gaussian, with a scale set by the escape radius.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The ejected gas fraction (\( f_{\\text{eg}} \)) is calculated as the remainder of the 
+      baryonic fraction after subtracting the stellar and bound gas components.
+    - The ejection radius (\( R_{\\text{ej}} \)) is derived from the escape radius, scaled 
+      by a parameter \( \eta \).
+    - The radial density profile follows a Gaussian distribution, normalized to integrate 
+      to the total ejected gas mass.
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{eg}}(r) = \\frac{f_{\\text{eg}} M}{(2 \\pi R_{\\text{ej}}^2)^{3/2}} 
+        \\cdot \\exp\\left(-\\frac{r^2}{2 R_{\\text{ej}}^2}\\right)
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( f_{\\text{eg}} \) is the ejected gas fraction.
+    - \( M \) is the halo mass.
+    - \( R_{\\text{ej}} = \\eta \\cdot R_{\\text{esc}} \), where \( R_{\\text{esc}} \) is 
+      the escape radius calculated from the halo's escape velocity.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -562,7 +475,8 @@ class EjectedGas(AricoProfiles):
 
         #Now use the escape radius, which is r_esc = v_esc * t_hubble
         #and this reduces down to just 1/2 * sqrt(Delta) * R_Delta
-        R_esc = 1/2 * np.sqrt(200) * R
+        assert self.mass_def.name[-1] == 'c', f"Escape radius cannot be calculated for mass_def = {self.mass_def.name}. Use critical overdensity."
+        R_esc = 1/2 * np.sqrt(self.mass_def.Delta) * R
         R_ej  = self.eta * 0.75 * R_esc
         R_ej  = R_ej[:, None]
 
@@ -580,61 +494,34 @@ class EjectedGas(AricoProfiles):
 
 
 class ReaccretedGas(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the reaccreted gas density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
-
-    See `SchneiderProfiles` for more docstring details.
+    This class extends `AricoProfiles` to compute the density profile of gas that has been 
+    reaccreted onto halos after being ejected, incorporating redshift evolution and mass dependence.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The reaccreted gas fraction (\( f_{\\text{rg}} \)) is derived by subtracting the contributions 
+      of stellar, ejected, and bound gas fractions from the total baryon fraction.
+    - The radial profile is modeled as a Gaussian distribution with a peak radius (\( R_{\\text{rg}} \)) 
+      and width (\( \sigma_{\\text{rg}} \)).
+    - The profile is normalized analytically to ensure that the total reaccreted gas mass integrates correctly.
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{rg}}(r) = \\frac{f_{\\text{rg}} M}{N} 
+        \\cdot \\frac{1}{\\sqrt{2 \\pi \\sigma_{\\text{rg}}^2}} 
+        \\cdot \\exp\\left(-\\frac{(r - R_{\\text{rg}})^2}{2 \\sigma_{\\text{rg}}^2}\\right)
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( f_{\\text{rg}} \) is the reaccreted gas fraction.
+    - \( M \) is the halo mass.
+    - \( R_{\\text{rg}} = \\theta_{\\text{rg}} R \) is the characteristic radius for reaccreted gas.
+    - \( \sigma_{\\text{rg}} = \\sigma_{\\text{rg}} R \) is the standard deviation of the Gaussian profile.
+    - \( N \) is the normalization factor, computed analytically to ensure mass conservation.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -682,9 +569,19 @@ class ReaccretedGas(AricoProfiles):
     
 
 class Gas(AricoProfiles):
-    '''
-    Convenience class that combines the Bound, Ejected, and Reaccreted gas components
-    '''
+    """
+    Convenience class for combining gas components in halos.
+
+    The `Gas` class provides a unified interface for modeling the total gas profile in halos. 
+    It combines contributions from the following components:
+    - `BoundGas`: Represents the bound gas component within halos.
+    - `EjectedGas`: Represents gas that has been ejected from halos due to feedback processes.
+    - `ReaccretedGas`: Represents gas that has been reaccreted onto halos after ejection.
+
+    This class simplifies calculations by leveraging the logic and methods of these individual 
+    gas components and combining their profiles into a single representation.
+    """
+
     def __init__(self, **kwargs): self.myprof = BoundGas(**kwargs) + EjectedGas(**kwargs) + ReaccretedGas(**kwargs)
     def __getattr__(self, name):  return getattr(self.myprof, name)
     
@@ -695,61 +592,49 @@ class Gas(AricoProfiles):
 
 
 class ModifiedDarkMatter(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the modified dark matter density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+    This class extends `AricoProfiles` to compute a dark matter profile modified by baryonic effects, 
+    such as the influence of gas on the gravitational potential. It uses both 
+    a gravity-only dark matter profile (`DarkMatter`) and a bound gas profile (`BoundGas`) to 
+    account for the redistribution of dark matter mass within halos.
 
-    See `SchneiderProfiles` for more docstring details.
+    Parameters
+    ----------
+    gas : BoundGas, optional
+        Instance of the `BoundGas` class representing the bound gas component. 
+        If not provided, a default `BoundGas` object is created.
+    gravityonly : DarkMatter, optional
+        Instance of the `DarkMatter` class representing the gravity-only dark matter component.
+        If not provided, a default `DarkMatter` object is created.
+    **kwargs
+        Additional arguments passed to initialize the parent `AricoProfiles` class and associated components.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The modified profile accounts for the interplay between gas and dark matter through 
+      a redistribution of mass, ensuring physical consistency.
+    - A minimization routine is used to solve a key equation for the 
+      characteristic radius \( r_p \).
+    - The final profile is normalized using the characteristic density (\( \rho_c \)) derived 
+      from analytical relations.
 
-    The gas density profile is given by:
+    The modified dark matter density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{DM}}(r) = 
+        \\begin{cases} 
+        \\frac{\\rho_c}{(r/r_s)(1 + r/r_s)^2}, & r < r_p \\\\ 
+        p_{\\text{Gro}} - p_{\\text{BG}}, & r \\geq r_p, r \\leq R \\\\ 
+        0, & r > R
+        \\end{cases}
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( \\rho_c \) is the characteristic density derived from the gravitational and gas components.
+    - \( r_s = R / c \) is the scale radius.
+    - \( r_p \) is the radius obtained by solving the balance equation for dark matter and gas.
     """
 
     def __init__(self, gas = None, gravityonly = None, **kwargs):
@@ -820,7 +705,7 @@ class ModifiedDarkMatter(AricoProfiles):
 
 
 class CollisionlessMatter(AricoProfiles):
-    __doc__ = S19.CollisionlessMatter.__doc__.replace('SchneiderProfiles', 'AricoProfiles')
+    __doc__ = S19.CollisionlessMatter.__doc__.replace('Schneider', 'Arico')
     
     def __init__(self, gas = None, stars = None, darkmatter = None, max_iter = 10, reltol = 1e-2, r_min_int = 1e-8, r_max_int = 1e1, r_steps = 5000, **kwargs):
         
@@ -1048,62 +933,48 @@ class DarkMatterBaryonwithLSS(S19.DarkMatterBaryon, AricoProfiles):
 
         AricoProfiles.__init__(self, **kwargs)
     
+
 class Pressure(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the gas pressure profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
+    This class extends `AricoProfiles` to compute the pressure profile of gas within halos. 
+    Contrary to the  `Thermodynamic.Pressure` class in BaryonForge, this class here follows
+    Arico20 and computes the pressure through a polytropic equation of state.
 
-    See `SchneiderProfiles` for more docstring details.
+    Parameters
+    ----------
+    gas : BoundGas, optional
+        Instance of the `BoundGas` class representing the bound gas component.
+        If not provided, a default `BoundGas` object is created.
+    **kwargs
+        Additional arguments passed to initialize the parent `AricoProfiles` class and associated components.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
-
-    The gas density profile is given by:
+    - The pressure profile is derived from the bound gas density profile and the effective 
+      equation of state (\( \Gamma_{\\text{eff}} \)).
+    - The profile normalization is calculated based on the gravitational potential, halo 
+      properties, and the gas density at the halo center.
+    
+    The pressure profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        P(r) = P_0 \\cdot \\rho_{\\text{BG}}^{\\Gamma_{\\text{eff}}}
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
+    - \( P_0 \) is the normalization constant, computed as:
 
       .. math::
 
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
+          P_0 = 4 \\pi G \\cdot \\frac{\\rho_c r_s^2}{\\rho_0^{\\Gamma_{\\text{eff}} - 1}} \\cdot (1 - \\frac{1}{\\Gamma_{\\text{eff}}})
 
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+      \( \\rho_c \) is the characteristic density, \( r_s \) is the scale radius, and 
+      \( \\rho_0 \) is the gas density at the center of the halo.
+    - \( \\Gamma_{\\text{eff}} \) is the effective equation of state, derived from the gas 
+      distribution parameters.
+    - \( \\rho_{\\text{BG}}(r) \) is the bound gas density profile.
     """
 
     def __init__(self, gas = None, **kwargs):
@@ -1158,30 +1029,35 @@ class Pressure(AricoProfiles):
     
 
 class NonThermalFrac(AricoProfiles):
-    
     """
-    Class for computing the non-thermal pressure fraction profile using the Green et al. (2020) model.
+    Class for modeling the non-thermal pressure fraction profile in halos.
 
-    
+    This class extends `AricoProfiles` to compute the fraction of pressure in halos that 
+    arises from non-thermal sources, such as turbulence and bulk motions. The profile is 
+    based on a parametric model calibrated to simulations from Green+20, with two
+    degrees of freedom.
+
     Notes
     -----
-    The model is based on parameters calibrated to simulations and is specifically defined 
-    with respect to \( R_{200m} \), the radius within which the mean density is 200 times 
-    the mean matter density of the universe.
+    - The non-thermal pressure fraction (\( f_{\\text{nt}} \)) is modeled as a function of 
+      radius and halo mass, with redshift-dependent scaling.
+    - The model is defined using the radius \( R_{200m} \), corresponding to the halo 
+      boundary defined with respect to the matter overdensity.
+    - The parameters of the model are calibrated to simulation results (e.g., Green et al. 2020).
 
-    The non-thermal pressure fraction \( f_{\\text{nt}}(r) \) is calculated using:
+    The non-thermal pressure fraction is given by:
 
     .. math::
 
-        f_{\\text{nt}}(r) = 1 - a \\left(1 + \\exp\\left(-\\left(\\frac{x}{b}\\right)^c\\right)\\right) 
-                            \\left(\\frac{\\nu_M}{4.1}\\right)^{\\frac{d}{1 + \\left(\\frac{x}{e}\\right)^f}}
+        f_{\\text{nt}}(r) = 1 - A_{\\text{nt}} (1 + \\exp(-(x/b)^c)) 
+        \\cdot \\left(\\frac{\\nu_M}{4.1}\\right)^{d / (1 + (x/e)^f)}
 
     where:
-        - \( x = \\frac{r}{R_{200m}} \)
-        - \( \\nu_M = \\frac{1.686}{\\sigma(M_{200m})} \) is the peak height parameter.
-        - \( a, b, c, d, e, f \) are model parameters calibrated to fit simulation data.
-
-    There are no free parameters in this model; it is completely specified by the halo mass and redshift.
+    - \( x = r / R_{200m} \)
+    - \( A_{\\text{nt}} \) is a normalization factor that scales with redshift: 
+      \( A_{\\text{nt}} = a (1 + z)^{\\alpha_{\\text{nt}}} \)
+    - \( \\nu_M = 1.686 / \\sigma(M_{200m}) \) is the peak height of the halo.
+    - \( b, c, d, e, f \) are model constants derived in Green et al. (2020).
     """
 
     def _real(self, cosmo, r, M, a):
@@ -1202,7 +1078,7 @@ class NonThermalFrac(AricoProfiles):
         x = r_use/R200m[:, None]
 
         a, b, c, d, e, f = 0.495, 0.719, 1.417,-0.166, 0.265, -2.116 #Values from Green20
-        a    = self.A_nt * np.power(1 + z, self.alpha_nt)
+        a    = self.A_nt * np.power(1 + z, self.alpha_nt) #We override the "a" param alone for more flexibility.
         nu_M = 1.686/ccl.sigmaM(cosmo, M200m, a)
         nu_M = nu_M[:, None]
         nth  = 1 - a * (1 + np.exp(-(x/b)**c)) * (nu_M/4.1)**(d/(1 + (x/e)**f))
@@ -1218,48 +1094,42 @@ class NonThermalFrac(AricoProfiles):
     
 class Temperature(AricoProfiles):
     """
-    Class for computing the temperature profile in halos.
+    Class for modeling the temperature profile of gas in halos.
 
-    The temperature is derived from the thermal pressure and the number density profiles, 
-    of a species using the ideal gas law. The temperature profile is important for understanding 
-    the thermal state of the intracluster medium and its impact on various astrophysical processes.
-
-    For this model to be correct, the input pressure must be the *thermal pressure*, i.e. the
-    non-thermal pressure must have already been accounted for in the model passed to this class.
-
+    This class extends `AricoProfiles` to compute the temperature profile of gas, 
+    based on the ideal gas law, using the pressure and gas density profiles.
 
     Parameters
     ----------
     pressure : Pressure, optional
-        An instance of the `Pressure` class defining the thermal gas pressure profile. 
-        If non-thermal pressure is relevant for your problem, it must be included in this
-        profile; see `Pressure` or `NonThermalFrac` for more details.
-        If this parameter is not provided, a default `Pressure` object is created using `kwargs`.
-    gasnumberdensity : GasNumberDensity, optional
-        An instance of the `GasNumberDensity` class defining the gas number density profile. 
-        If not provided, a default `GasNumberDensity` object is created using `kwargs`.
+        Instance of the `Pressure` class representing the gas pressure profile. 
+        If not provided, a default `Pressure` object is created, accounting for 
+        non-thermal pressure using `NonThermalFrac`.
+    gas : BoundGas, optional
+        Instance of the `BoundGas` class representing the gas density profile. 
+        If not provided, a default `BoundGas` object is created.
     **kwargs
-        Additional keyword arguments passed to initialize the `Pressure`, `GasNumberDensity`, 
-        and other parameters from `SchneiderProfiles`.
+        Additional arguments passed to initialize the parent `AricoProfiles` class 
+        and associated components.
 
     Notes
     -----
-    The `Temperature` class computes the temperature profile of the gas in halos by dividing 
-    the gas pressure by the gas number density and the Boltzmann constant. This calculation 
-    assumes the ideal gas law, which relates pressure, number density, and temperature.
+    - The real-space temperature profile is calculated using the ideal gas law:
 
-    The gas temperature \( T \) is calculated using:
+      .. math::
 
-    .. math::
+          T(r) = \\frac{P(r)}{n(r) \\cdot k_B}
 
-        T(r) = \\frac{P}(r)}{n(r) \\cdot k_B}
+      where:
+      - \( P(r) \) is the gas pressure profile.
+      - \( n(r) \) is the gas number density, derived from the mass density and mean molecular weight.
+      - \( k_B \) is the Boltzmann constant.
 
-    where:
-        - \( P(r) \) is the Thermal pressure profile of a species.
-        - \( n(r) \) is the number density profile of a species.
-        - \( k_B \) is the Boltzmann constant (in eV).
+    - The projected temperature profile computes the average temperature along the line of sight, 
+      normalizing by the number density. Thus, the projected result is still in units of temperature
+      and not in units of temperature * distance.
     """
-    
+
     def __init__(self, pressure = None, gas = None, **kwargs):
         
         self.Pressure = pressure
@@ -1295,12 +1165,7 @@ class Temperature(AricoProfiles):
     
 
     def projected(self, cosmo, r, M, a):
-        """
-        Need a custom projected class, because we want the "average temperature"
-        along the line of sight. The "integrated temperature" is not a meaningful
-        physical quantity.
-        """
-
+        
         P   = self.Pressure.projected(cosmo, r, M, a)
         n   = self.Gas.projected(cosmo, r, M, a) / (self.mean_molecular_weight * m_p) / (Mpc_to_m * m_to_cm)**3
 
@@ -1314,62 +1179,39 @@ class Temperature(AricoProfiles):
 
         return prof
     
+
 class ExtendedBoundGas(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Class for modeling the extended bound gas density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
-
-    See `SchneiderProfiles` for more docstring details.
+    This class follows `BoundGas` but enforces an additional criteria that
+    the profile follows an NFW form for r > r_out.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The bound gas fraction (\( f_{\\text{bg}} \)) is calculated by accounting for the contributions 
+      of stellar and reaccreted gas fractions, as well as the total baryon fraction.
+    - The radial profile transitions from a power-law form with two characteristic radii (\( R_{\\text{inn}} \) and \( R_{\\text{out}} \)) 
+      to an NFW-like behavior at large radii.
+    - The profile is normalized to ensure consistency with the total bound gas mass.
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{bg}}(r) = 
+        \\begin{cases} 
+        \\frac{1}{(1 + u)^\\beta (1 + v^2)^2}, & v \\leq 1 \\\\ 
+        \\frac{y_1}{x (1 + x)^2}, & v > 1
+        \\end{cases}
 
     where:
-
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    - \( u = r / R_{\\text{inn}} \), \( v = r / R_{\\text{out}} \), and \( x = r / r_s \).
+    - \( \\beta \) is the slope parameter.
+    - \( R_{\\text{inn}} = \\theta_{\\text{inn}} R \), \( R_{\\text{out}} = \\theta_{\\text{out}} R \).
+    - \( y_1 \) is a normalization factor for the large-scale NFW-like behavior, set by matching profiles at R_out.
+    - \( r_s = R / c \) is the scale radius.
+    - The profile is normalized to get the correct gas fraction within the overdensity radius, R.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -1439,62 +1281,45 @@ class ExtendedBoundGas(AricoProfiles):
 
         return prof
     
+
 class BoundGasDeprecated(AricoProfiles):
-
     """
-    Class representing the gas density profile.
+    Deprecated class for modeling the bound gas density profile in halos.
 
-    This class is derived from the `SchneiderProfiles` class and provides an implementation 
-    of a gas density profile. It calculates the real-space gas density profile, using
-    the general NFW (GNFW) model of `Nagai, Kravtsov & Vikhlinin 2009 <https://arxiv.org/pdf/astro-ph/0703661>`_.
-
-    See `SchneiderProfiles` for more docstring details.
+    This class extends `AricoProfiles` to compute the density profile of bound gas within halos, 
+    based on an earlier formulation. The profile incorporates both hydrostatic equilibrium 
+    and a cutoff at the virial radius. It is a deprecated model in the Arico framework, and newer 
+    implementations such as `BoundGas` should be used.
 
     Notes
     -----
-    The `Gas` class models the gas distribution in halos by considering the gas fraction, 
-    which is computed based on the total baryonic fraction minus the stellar fraction. 
-    The gas density profile is defined using parameters such as `beta`, `delta`, `gamma`, 
-    `theta_inn`, and `theta_out`. These parameters characterize the core and ejection properties 
-    of the gas distribution.
+    - The bound gas fraction (\( f_{\\text{bg}} \)) is calculated by accounting for the stellar fraction 
+      and the total baryon fraction, scaled by a mass-dependent factor.
+    - The profile transitions between a hydrostatic regime (defined by \( r / \\sqrt{\epsilon_{\\text{hydro}}} \)) 
+      and an outer profile proportional to \( (1 + x)^{-2} \), ensuring continuity at the transition radius.
+    - The normalization is computed by integrating the profile within the virial radius.
 
-    The gas density profile is given by:
+    The density profile is given by:
 
     .. math::
 
-        \\rho_{\\text{gas}}(r) = \\frac{f_{\\text{gas}} M_{\\text{tot}}}{N} \\cdot 
-        \\frac{1}{(1 + u)^{\\beta}} \\cdot \\frac{1}{(1 + v)^{(\\delta - \\beta)/\\gamma}}
+        \\rho_{\\text{bg}}(r) = 
+        \\begin{cases} 
+        \\frac{\\ln(1 + x)}{x}^{\\Gamma_{\\text{eff}}}, & r < R / \\epsilon \\\\ 
+        y_1 \\cdot \\frac{1}{x (1 + x)^2}, & r \\geq R / \\epsilon \\\\ 
+        0, & r > R
+        \\end{cases}
 
     where:
+    - \( x = r / r_s \), and \( r_s = R / c \) is the scale radius.
+    - \( \\Gamma_{\\text{eff}} \) is the effective equation of state.
+    - \( y_1 \) is a normalization factor ensuring continuity at \( R / \\epsilon \).
+    - The profile is normalized by integrating over a range of radii to ensure mass conservation.
 
-    - :math:`f_{\\text{gas}} = f_{\\text{bar}} - f_{\\star}` is the gas fraction.
-    - :math:`f_{\\text{bar}}` is the cosmic baryon fraction.
-    - :math:`f_{\\star}` is the stellar mass fraction, defined as:
-
-      .. math::
-
-          f_{\\star} = 2A \\left(\\left(\\frac{M}{M_1}\\right)^{\\tau} + \\left(\\frac{M}{M_1}\\right)^{\\eta}\\right)^{-1}
-
-    - :math:`M_{\\text{tot}}` is the total halo mass.
-    - :math:`N` is the normalization factor to ensure mass conservation.
-    - :math:`u = \\frac{r}{R_{\\text{co}}}` and :math:`v = \\frac{r}{R_{\\text{ej}}}` are dimensionless radii.
-    - :math:`\\beta` is the power-law slope for :math:`R_{\\text{co}} \lesssim r \lesssim R_{\\text{ej}}`
-    - :math:`\\delta` is the power-law slope at :math:`r \sim \lesssim R_{\\text{ej}}`
-    - :math:`\\gamma` is the power-law slope for :math:`r \gg R_{\\text{ej}}`
-    - :math:`R_{\\text{co}} = \\theta_{\\text{co}} R` is the core radius.
-    - :math:`R_{\\text{ej}} = \\theta_{\\text{ej}} R` is the ejection radius.
-    - :math:`r` is the radial distance.
-
-    Examples
-    --------
-    Create a `Gas` profile and compute the density at specific radii:
-
-    >>> gas_profile = Gas(**parameters)
-    >>> cosmo = ...  # Define or load a cosmology object
-    >>> r = np.logspace(-2, 1, 50)  # Radii in comoving Mpc
-    >>> M = 1e14  # Halo mass in solar masses
-    >>> a = 0.5  # Scale factor corresponding to redshift z
-    >>> density_profile = gas_profile.real(cosmo, r, M, a)
+    Deprecation Warning
+    --------------------
+    This class represents an old version of the bound gas profile from Arico 2020. 
+    Please use the latest Arico model, found in `BoundGas`.
     """
 
     def _real(self, cosmo, r, M, a):
@@ -1553,6 +1378,5 @@ class BoundGasDeprecated(AricoProfiles):
         #Handle dimensions so input dimensions are mirrored in the output
         if np.ndim(r) == 0: prof = np.squeeze(prof, axis=-1)
         if np.ndim(M) == 0: prof = np.squeeze(prof, axis=0)
-
 
         return prof

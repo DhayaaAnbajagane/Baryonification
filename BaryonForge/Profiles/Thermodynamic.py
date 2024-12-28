@@ -604,9 +604,44 @@ class Temperature(BaseThermodynamicProfile):
     
     def projected(self, cosmo, r, M, a):
         """
-        Need a custom projected class, because we want the "average temperature"
-        along the line of sight. The "integrated temperature" is not a meaningful
-        physical quantity.
+        Compute the projected temperature profile along the line of sight.
+
+        This method calculates the "average temperature" along the line of sight, 
+        which is a physically meaningful quantity for comparing with observations 
+        such as X-ray or Sunyaev-Zel'dovich measurements. It differs from the 
+        "integrated temperature," which lacks physical relevance in most astrophysical contexts.
+
+        Parameters
+        ----------
+        cosmo : Cosmology
+            The cosmology object containing cosmological parameters.
+        r : array_like
+            The projected radial distances at which to compute the profile, in units of Mpc/h.
+        M : float
+            The halo mass, in units of solar masses.
+        a : float
+            The scale factor of the Universe.
+
+        Returns
+        -------
+        prof : array_like
+            The projected average temperature profile, in units of eV.
+
+        Notes
+        -----
+        The projected temperature is computed using the ideal gas law:
+
+        .. math::
+
+            T_{\text{proj}}(r) = \\frac{P_{\text{proj}}(r)}{n_{\text{proj}}(r) \\cdot k_B}
+
+        where:
+            - \( P_{\text{proj}}(r) \) is the projected thermal pressure profile.
+            - \( n_{\text{proj}}(r) \) is the projected number density profile.
+            - \( k_B \) is the Boltzmann constant (in eV).
+
+        Regions with zero gas density (\( n_{\text{proj}}(r) = 0 \)) are assigned a temperature of 0 
+        to avoid division errors, as these regions lack gas to support a meaningful temperature.
         """
 
         P   = self.Pressure.projected(cosmo, r, M, a)
